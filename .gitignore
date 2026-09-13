@@ -1,0 +1,36 @@
+# ===== 运行期数据（体积大 / 含个人内容，不入库）=====
+# 抓取的文章原文与图片素材（约 355 MB，可随时重新抓取）
+articles/
+# 项目工作记忆与本地产出
+.workbuddy/
+__pycache__/
+*.pyc
+
+# ===== 第三方文章原文（版权原因不入库，用脚本重新抓取）=====
+research/wx_article.html
+
+# ===== 过程产物 / 生成物 =====
+article_draft.md
+article_preview.html
+排版预览.html
+report_content.html
+_render/
+diagnose_export.html
+
+# ===== 演示 PPT 工程中间文件（保留产出的 pptx 即可）=====
+公众号风格工坊演示/slides/
+公众号风格工坊演示/DESIGN.md
+公众号风格工坊演示/STORY.md
+# Office 打开文件时产生的锁文件
+~$*
+
+# ===== 系统 / 编辑器 =====
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# ===== 依赖与构建产物 =====
+node_modules/
+dist/
