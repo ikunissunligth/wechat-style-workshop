@@ -19,6 +19,9 @@ diagnose_export.html
 
 # ===== 演示 PPT 工程中间文件（保留产出的 pptx 即可）=====
 公众号风格工坊演示/slides/
+公众号风格工坊演示/.slidep/
+# 旧版演示（保留 v2 即可）
+公众号风格工坊演示/公众号风格工坊演示.pptx
 公众号风格工坊演示/DESIGN.md
 公众号风格工坊演示/STORY.md
 # Office 打开文件时产生的锁文件
