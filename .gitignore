@@ -37,3 +37,6 @@ desktop.ini
 # ===== 依赖与构建产物 =====
 node_modules/
 dist/
+
+# 重写提交历史时的本地安全备份
+.git-backup-*/
