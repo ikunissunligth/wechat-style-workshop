@@ -309,6 +309,66 @@ function finish() {
   const gpDefault = w.buildGenPrompt(w.DEFAULT_PROFILE, '测试主题', '- 要点', '短（600-900字）', '');
   check('简报-内置档案提示词可用', gpDefault.length > 500, true);
 
+  console.log('== 本轮新增：选题逻辑/认知框架 / 生成历史 / 单档案导出 ==');
+  /* 8) profileTopic / profileStance：词典命中与判断句抽取 */
+  const topicParas = [
+    '我上手用了三天，续航实测 12 小时，跑分也跑了。',
+    '这次发布会的手机芯片提升不小。',
+    '这个定价真离谱，纯属割韭菜。',
+    '怎么自己换电池？手把手教程来了。',
+    '说实话吧，这机器真香。',
+    '昨天去了趟咖啡店，日常记录一下。'
+  ];
+  const tp = w.profileTopic(topicParas);
+  check('选题-总段数', tp.total, 6);
+  check('选题-命中评测话题', (tp.topics['评测'] || 0) >= 1, true);
+  check('选题-命中吐槽话题', (tp.topics['吐槽'] || 0) >= 1, true);
+  check('选题-命中亲历角度', (tp.angles['亲历叙事'] || 0) >= 1, true);
+  const st = w.profileStance(topicParas);
+  check('立场-抽到判断句', st.judges.length >= 2, true);
+  check('立场-判断句含立场标记', st.judges.some(j => /香|韭菜/.test(j)), true);
+  /* 9) topicBrief / stanceBrief：占比达标才输出，缺字段返回空串 */
+  check('简报-缺topic返回空串', w.topicBrief({}), '');
+  check('简报-缺stance返回空串', w.stanceBrief({}), '');
+  const richTopic = { topic: { total: 8, topics: { 评测: 6, 吐槽: 1 }, angles: { 亲历叙事: 4 } },
+                      stance: { total: 8, judges: ['这机器真香，不用等。', '别买首发，等口碑。'] } };
+  const tb = w.topicBrief(richTopic);
+  check('简报-选题占比75%进提示词', tb.indexOf('75% 聊评测') >= 0, true);
+  check('简报-低占比话题不进提示词', tb.indexOf('吐槽') === -1, true);
+  const sb = w.stanceBrief(richTopic);
+  check('简报-立场进提示词', sb.indexOf('真香') >= 0, true);
+  check('简报-立场声明不抄内容', sb.indexOf('内容不抄') >= 0, true);
+  /* 10) 新简报注入提示词；内置档案仍可用 */
+  const gpNew = w.buildGenPrompt(richTopic, '测试主题', '- 要点', '短（600-900字）', '');
+  check('简报-选题已注入提示词', gpNew.indexOf('选题习惯') >= 0, true);
+  check('简报-立场已注入提示词', gpNew.indexOf('立场表达习惯') >= 0, true);
+  /* 11) 真实文章分析结果带新字段（差评样例） */
+  check('分析-topic字段存在', report.topic && report.topic.total > 0, true);
+  check('分析-stance字段存在', report.stance !== undefined, true);
+  /* 12) 生成历史：存取/上限/渲染/删除 */
+  w.localStorage.removeItem('wxw_genhistory');
+  w.genState.profileId = '_default';
+  w.pushGenHistory('# 版本A\n\n内容A', '测试档案', '主题A', '短（600-900字）');
+  w.pushGenHistory('# 版本B\n\n内容B', '测试档案', '主题B', '中（1200-1800字）');
+  let hist = w.loadGenHistory();
+  check('历史-存两版', hist.length, 2);
+  check('历史-最新在前', hist[0].md.indexOf('版本B') >= 0, true);
+  check('历史-记录字数与主题', hist[0].words > 0 && hist[0].topic === '主题B', true);
+  for (let i = 0; i < 25; i++) w.pushGenHistory('# 批量' + i, 'x', 't', '');
+  check('历史-上限20版', w.loadGenHistory().length, 20);
+  w.renderGenHistory();
+  const histBox = w.document.getElementById('genHistoryList');
+  check('历史-渲染出回滚按钮', histBox.querySelectorAll('[data-restore]').length, 20, true);
+  check('历史-渲染出删除按钮', histBox.querySelectorAll('[data-hdel]').length, 20, true);
+  /* 13) 图池治理 UI 存在 */
+  check('图池-扫描按钮存在', !!w.document.getElementById('btnScanPool'), true);
+  check('图池-结果容器存在', !!w.document.getElementById('poolResult'), true);
+  /* 14) 单档案导出按钮在档案列表里 */
+  check('导出-档案列表含导出按钮', (function(){
+    w.renderProfileList();
+    return w.document.getElementById('profileList').querySelectorAll('[data-exportone]').length >= 0;
+  })(), true);
+
   console.log('== 结果 ==');
   console.log(`PASS ${pass}, FAIL ${fail}`);
   process.exit(fail ? 1 : 0);

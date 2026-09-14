@@ -365,6 +365,12 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
       <span class="muted" id="genHint" style="margin-left:8px"></span>
     </div>
   </div>
+  <div class="card">
+    <h2>第三步：生成历史版本</h2>
+    <p class="muted">每次「生成文章」自动存一版（最多 20 版）。回滚前当前稿会先自动存档，不会丢。</p>
+    <div id="genHistoryList"></div>
+  </div>
+
   <div class="card" id="genResultCard" style="display:none">
     <h2>生成结果</h2>
     <div class="toolbar">
@@ -434,6 +440,15 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
     </div>
     <div id="fetchStatus" class="muted"></div>
     <div class="note" style="margin-top:10px">分组用法：写某篇文章前，先抓 2-3 篇同题材参考文章放进同一个分组（比如「华为小米稿」），生成文章时自动配图只从这个组取图，匹配会准很多。</div>
+  </div>
+  <div class="card">
+    <h2>图池治理（去重与小图清理）</h2>
+    <p class="muted">扫描全部已抓图片：同字节重复图（微信 CDN 同图不同链接很常见）与过小的配图（宽或高不足 200px）会稀释自动配图的命中质量。扫描只读不删；清理需你逐项确认。行内表情不受小图规则影响。</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn primary" id="btnScanPool" type="button">扫描图池</button>
+      <span class="muted" id="scanPoolStatus"></span>
+    </div>
+    <div id="poolResult" style="margin-top:14px"></div>
   </div>
   <div class="card" id="assetListCard" style="display:none">
     <div id="assetGroupBar" style="margin-bottom:12px"></div>
@@ -675,7 +690,9 @@ function analyzeHtml(html){
     },
     samples:nonEmpty.slice(0,3).map(function(t){return t.length>300?t.slice(0,300)+'…':t}),
     anchors:pickAnchorParagraphs(nonEmpty),
-    argument:profileArgument(nonEmpty)
+    argument:profileArgument(nonEmpty),
+    topic:profileTopic(nonEmpty),
+    stance:profileStance(nonEmpty)
   };
 }
 /* 风格锚点段落：按用途给真实段落打标签，生成时作为 few-shot 锚点注入。
@@ -711,6 +728,81 @@ function profileArgument(paras){
   });
   function pct(x){return Math.round(x/n*100)}
   return {total:n,data:pct(data),quote:pct(quote),first:pct(first),question:pct(question),colloquial:pct(colloquial)};
+}
+/* 选题逻辑层（六层框架第 3 层）：这个号常写什么、从什么角度切入。
+   纯规则：按关键词词典给每段打话题标签（评测/数码/吐槽/教程/生活/观点/热点），
+   再统计切入角度（亲历叙事/对比/提问/吐槽/科普）。样本少的时候比例噪声大，
+   所以只在占比 ≥25% 时才写进简报。 */
+var TOPIC_LEXICON={
+  评测:['测评','评测','上手','体验','一周','实测','续航','跑分','优缺点','值不值得'],
+  数码:['手机','芯片','屏幕','电池','摄像头','系统','发布会','耳机','平板','手表','AI','大模型'],
+  吐槽:['吐槽','离谱','迷惑','无语','拉胯','割韭菜','智商税','翻车','尴尬'],
+  教程:['教程','步骤','方法','怎么','如何','攻略','指南','手把手'],
+  生活:['吃了','去了','出门','周末','路上','咖啡','上班','下班','日常'],
+  热点:['刚刚','今天','昨晚','官宣','曝光','爆料','传出','突发']
+};
+var ANGLE_PATTERNS=[
+  ['亲历叙事',/(我|咱)[^，。；]{0,10}(试|用|看|买|拿到|去了|跑了)/],
+  ['对比评测',/(对比|相比|和.{1,8}比|VS|vs|PK)/],
+  ['吐槽开炮',/(离谱|无语|吐槽|什么玩意|迷惑|割韭菜|智商税)/],
+  ['提问互动',/[？?]$/],
+  ['科普讲解',/(其实|原理|意思就是|简单说|说白了|本质上)/]
+];
+function profileTopic(paras){
+  var list=(paras||[]).filter(function(t){return t&&t.length>=10});
+  var n=list.length||1;
+  var topics={},angles={};
+  list.forEach(function(t){
+    for(var k in TOPIC_LEXICON){
+      if(TOPIC_LEXICON[k].some(function(w){return t.indexOf(w)>=0})){topics[k]=(topics[k]||0)+1;break}
+    }
+    ANGLE_PATTERNS.forEach(function(a){if(a[1].test(t))angles[a[0]]=(angles[a[0]]||0)+1});
+  });
+  return {total:n,topics:topics,angles:angles};
+}
+/* 认知框架层（六层框架第 5 层）：反复出现的立场与价值判断。
+   实现：抽「判断句」——含观点副词/情态词的句子，取高频 2-6 字词组做立场指纹。
+   纯规则统计，样本不足（判断句 <5 条）时返回空，宁缺毋滥。 */
+var STANCE_MARKS=[/(别|不要|劝你)[^，。]{0,6}(买|冲|入|等|急)/,/不?值得/,/反正我/,/我劝/,/说白了/,/(真)?香/,/交个?智商税/,/(别|不)碰/,/(看|等)口碑/,/(翻|没必要)/,/肯定/,/注定/,/(我)?站.{1,6}/,/离谱/,/割韭菜/,/吹爆/,/劝退/];
+function profileStance(paras){
+  var list=(paras||[]).filter(function(t){return t&&t.length>=8});
+  var judges=[];
+  list.forEach(function(t){
+    /* 按句切，只看含立场标记的短句 */
+    String(t).split(/[。！？!?]/).forEach(function(sen){
+      sen=sen.trim();
+      if(sen.length<4||sen.length>40)return;
+      if(STANCE_MARKS.some(function(re){return re.test(sen)}))judges.push(sen);
+    });
+  });
+  judges=judges.slice(0,8); /* 最多存 8 条，控制档案体积与提示词信噪比 */
+  return {total:list.length,judges:judges};
+}
+/* 选题逻辑 + 认知框架简报：拼进生成提示词。档案缺字段（内置/旧档案）返回空串，向后兼容。 */
+function topicBrief(p){
+  var t=p&&p.topic;
+  if(!t||!t.total)return '';
+  var n=t.total,parts=[];
+  Object.keys(t.topics||{}).forEach(function(k){
+    var pct=Math.round(t.topics[k]/n*100);
+    if(pct>=25)parts.push(pct+'% 聊'+k+'相关内容');
+  });
+  var ap=[];
+  Object.keys(t.angles||{}).forEach(function(k){
+    var pct=Math.round(t.angles[k]/n*100);
+    if(pct>=25)ap.push(k+'（'+pct+'%）');
+  });
+  var out='';
+  if(parts.length)out+='\n- 选题习惯（统计自样例 '+n+' 段）：偏好 '+parts.join('、')+'；切入角度以 '+
+    (ap.length?ap.join('、'):'平视叙述')+' 为主，写新文章时沿用同样的切入方式';
+  return out;
+}
+function stanceBrief(p){
+  var s=p&&p.stance;
+  if(!s||!s.judges||!s.judges.length)return '';
+  return '\n- 立场表达习惯（该号反复出现的价值判断方式，学表达方式、内容不抄）：'+
+    s.judges.slice(0,4).map(function(j){return '「'+j.slice(0,24)+'」'}).join('、')+
+    '——新文章里也要有这种敢于下判断的表达，但判断本身要基于我给的要点';
 }
 /* 论证方式简报：把 profileArgument 的统计写进提示词，让新稿的论据组织方式也贴近目标号。
    对应同类项目 writing-dna-skill 六层框架里的「素材策略」层——只量化表层语言不足以像，
@@ -847,9 +939,18 @@ function renderProfileList(){
     h+='<div class="profile-item"><div class="pi-main">'+
       '<div class="pi-name">'+esc(p.name)+'</div>'+
       '<div class="pi-meta">'+esc(p.source.author||'')+' · '+(p.css.fontSize+'px / '+p.css.lineHeight+'em / 段均'+p.paragraphs.avgLen+'字 / '+(p.rhythm.avg||'?')+'段一图')+' · '+new Date(p.createdAt||p.id).toLocaleDateString()+'</div>'+
-      '</div><button class="btn sm" data-view="'+p.id+'">查看</button><button class="btn sm danger" data-del="'+p.id+'">删除</button></div>';
+      '</div><button class="btn sm" data-view="'+p.id+'">查看</button><button class="btn sm" data-exportone="'+p.id+'" title="导出这一个档案为 JSON，便于跨设备/多人传递">导出</button><button class="btn sm danger" data-del="'+p.id+'">删除</button></div>';
   });
   box.innerHTML=h;
+  box.querySelectorAll('[data-exportone]').forEach(function(b){b.onclick=function(){
+    var p=findProfile(b.getAttribute('data-exportone'));
+    if(!p){toast('档案不存在');return}
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([JSON.stringify({profiles:[p],exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}));
+    a.download=String(p.name).replace(/[\\/:*?"<>|\s]+/g,'_').slice(0,40)+'_风格档案.json';
+    a.click();URL.revokeObjectURL(a.href);
+    toast('已导出「'+p.name+'」（导入时与其他档案合并）');
+  }});
   box.querySelectorAll('[data-view]').forEach(function(b){b.onclick=function(){
     var p=findProfile(b.getAttribute('data-view'));
     currentReport=JSON.parse(JSON.stringify(p));
@@ -898,8 +999,8 @@ $('btnAnalyzeUrl').onclick=function(){
     $('analyzeGroup').value=finalGroup;
     var hint=$('analyzeSrcHint');
     if(hint){hint.style.display='';hint.innerHTML='图源已就绪：<b>'+esc(finalGroup)+'</b> · '+d.okCount+' 张图'+
-      (d.reused?'（复用已有素材）':'')+'　→ 保存风格档案后，生成文章时会自动锁定这个分组';}
-    toast('已抓取：'+d.okCount+' 张图 → 分组「'+finalGroup+'」');
+      (d.reused?'（复用已有素材）':'')+(d.fromSnapshot?'（原文来自本地快照：线上已抓不到，用的之前存档）':'')+'　→ 保存风格档案后，生成文章时会自动锁定这个分组';}
+    toast('已抓取：'+d.okCount+' 张图 → 分组「'+finalGroup+'」'+(d.fromSnapshot?'（快照）':''));
     if(grp)loadAssetList();
     /* 补充图源：同题材文章只抓图，归入同一分组，不参与风格分析 */
     fetchExtraImageSources(finalGroup);
@@ -1061,6 +1162,66 @@ $('ideaPos').onchange=function(){localStorage.setItem('wxw_ideaPos',this.value)}
 
 /* ---------- 生成页 ---------- */
 var genState={profileId:null,md:''};
+/* ---------- 生成历史版本（规划 P1-3）----------
+   每次生成存一版快照（上限 20 版，超出丢最旧），存 localStorage：
+   wxw_genhistory = [{id, time, profileId, profileName, topic, len, words, md}]
+   「上一版其实更好」在写作场景非常常见，所以要能回滚而不是被覆盖。 */
+var GEN_HISTORY_MAX=20;
+function loadGenHistory(){
+  try{
+    var l=JSON.parse(localStorage.getItem('wxw_genhistory')||'[]');
+    return Array.isArray(l)?l:[];
+  }catch(e){return[]}
+}
+function saveGenHistory(l){localStorage.setItem('wxw_genhistory',JSON.stringify(l.slice(0,GEN_HISTORY_MAX)))}
+function pushGenHistory(md,profileName,topic,lenSel){
+  if(!md)return;
+  var l=loadGenHistory();
+  l.unshift({
+    id:Date.now()+Math.floor(Math.random()*1000),
+    time:Date.now(),
+    profileId:genState.profileId,
+    profileName:profileName||'',
+    topic:(topic||'').slice(0,40),
+    len:lenSel||'',
+    words:countCnWords(md),
+    md:md
+  });
+  saveGenHistory(l);
+}
+function renderGenHistory(){
+  var box=$('genHistoryList');
+  if(!box)return;
+  var l=loadGenHistory();
+  if(!l.length){box.innerHTML='<div class="empty">还没有历史版本。每次「生成文章」都会自动存一版。</div>';return}
+  var h='';
+  l.forEach(function(v){
+    var t=new Date(v.time);
+    h+='<div class="profile-item"><div class="pi-main">'+
+      '<div class="pi-name">'+esc(v.topic||'(未记主题)')+'</div>'+
+      '<div class="pi-meta">'+esc(v.profileName||'')+' · '+(v.words||0)+' 字 · '+
+      (v.len?esc(v.len)+' · ':'')+
+      (t.getMonth()+1)+'-'+t.getDate()+' '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+'</div>'+
+      '</div><button class="btn sm" data-restore="'+v.id+'">回滚此版</button>'+
+      '<button class="btn sm danger" data-hdel="'+v.id+'">删</button></div>';
+  });
+  box.innerHTML=h;
+  box.querySelectorAll('[data-restore]').forEach(function(b){b.onclick=function(){
+    var v=loadGenHistory().filter(function(x){return String(x.id)===b.getAttribute('data-restore')})[0];
+    if(!v){toast('版本不存在');return}
+    /* 回滚前把当前稿也存进历史，避免「回滚错了想回去」 */
+    if(genState.md)pushGenHistory(genState.md,findProfile(genState.profileId)?findProfile(genState.profileId).name:'',genState.topic||'',genState.len||'');
+    genState.md=v.md;
+    genState.profileId=v.profileId;
+    localStorage.setItem('wxw_lastgen',JSON.stringify(genState));
+    renderGenResult();
+    toast('已回滚到 '+new Date(v.time).toLocaleString()+' 的版本');
+  }});
+  box.querySelectorAll('[data-hdel]').forEach(function(b){b.onclick=function(){
+    saveGenHistory(loadGenHistory().filter(function(x){return String(x.id)!==b.getAttribute('data-hdel')}));
+    renderGenHistory();toast('已删除该版本');
+  }});
+}
 function refreshGenSelect(){
   var sel=$('genProfile'),prev=sel.value;
   var h='<option value="'+DEFAULT_PROFILE.id+'">'+esc(DEFAULT_PROFILE.name)+'</option>';
@@ -1119,6 +1280,8 @@ function buildGenPrompt(p,topic,points,len,extra){
   '- 行内小表情：全文约 '+emojiN+' 个，放在语气转折、情绪、强调处，不要密集\n'+
   '- 语言风格：'+tone+'\n'+
   argumentBrief(p)+
+  topicBrief(p)+
+  stanceBrief(p)+
   anchorBrief(p)+
   '\n'+
   '【任务】\n'+
@@ -1245,7 +1408,11 @@ $('btnGen').onclick=function(){
   .then(function(md){
     genState.profileId=$('genProfile').value;
     genState.md=md;
+    genState.topic=$('genTopic').value.trim();
+    genState.len=lenSel;
     localStorage.setItem('wxw_lastgen',JSON.stringify(genState));
+    pushGenHistory(md,genProfile().name,genState.topic,lenSel);
+    renderGenHistory();
     renderGenResult();
     var n=countCnWords(md);
     var L=lenTarget(lenSel);
@@ -2065,6 +2232,40 @@ function summarize(reports,names){
   };
   reports.forEach(function(rep){r.samples=r.samples.concat(rep.samples.slice(0,2))});
   r.samples=r.samples.slice(0,6);
+  /* 六层框架新字段（选题逻辑/认知框架/论证画像/语气锚点）：批量汇总取各篇
+     已算好的比例做平均（各篇段数不同，直接累加计数会偏）；
+     锚点取第一篇的（每类只有 1 段，取多份会撑爆提示词）。 */
+  function avgPct(key,fields){
+    var has=reports.some(function(rep){return rep[key]&&rep[key].total});
+    if(!has)return null;
+    var out={total:Math.round(avg(reports.map(function(rep){return rep[key]?(rep[key].total||0):0})))};
+    fields.forEach(function(f){
+      out[f]=Math.round(avg(reports.map(function(rep){return rep[key]?(rep[key][f]||0):0})));
+    });
+    return out;
+  }
+  var arg=avgPct('argument',['data','quote','first','question','colloquial']);
+  if(arg&&arg.total)r.argument=arg;
+  var hasTopic=reports.some(function(rep){return rep.topic&&rep.topic.total});
+  if(hasTopic){
+    var topics={},angles={};
+    reports.forEach(function(rep){
+      var t=rep.topic;if(!t)return;
+      for(var k in t.topics||{})topics[k]=(topics[k]||0)+t.topics[k];
+      for(var k2 in t.angles||{})angles[k2]=(angles[k2]||0)+t.angles[k2];
+    });
+    r.topic={
+      total:Math.round(avg(reports.map(function(rep){return rep.topic?(rep.topic.total||0):0}))),
+      topics:Object.keys(topics).map(function(k){return [k,Math.round(topics[k]/reports.length)]})
+        .filter(function(x){return x[1]>0}).reduce(function(o,x){o[x[0]]=x[1];return o},{}),
+      angles:Object.keys(angles).map(function(k){return [k,Math.round(angles[k]/reports.length)]})
+        .filter(function(x){return x[1]>0}).reduce(function(o,x){o[x[0]]=x[1];return o},{})
+    };
+  }
+  var judges=[];
+  reports.forEach(function(rep){if(rep.stance&&rep.stance.judges)judges=judges.concat(rep.stance.judges)});
+  if(judges.length)r.stance={total:0,judges:judges.slice(0,8)};
+  if(reports[0]&&reports[0].anchors)r.anchors=reports[0].anchors;
   return r;
 }
 function mode(arr){
@@ -2364,6 +2565,77 @@ function openImgDetail(im){
   body.querySelector('#imOpen').onclick=function(){window.open(im.local,'_blank')};
 }
 
+/* ---------- 图池治理（规划 P1-5：去重 + 小图过滤） ---------- */
+var POOL_SCAN=null; /* 缓存最近一次扫描结果，供清理按钮引用 */
+$('btnScanPool').onclick=function(){
+  if(!aiUseProxy()){toast('file:// 模式无法扫描，请用 start.bat 启动');return}
+  var b=this;b.disabled=true;b.innerHTML='<span class="spin"></span> 扫描中…';
+  $('scanPoolStatus').textContent='正在逐文件计算指纹与尺寸…（图多时约几十秒）';
+  fetch('/api/scan_pool',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+  .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d})})
+  .then(function(d){
+    POOL_SCAN=d;
+    renderPoolResult(d);
+    $('scanPoolStatus').textContent='';
+    toast('扫描完成：'+d.summary.total+' 张图，重复 '+d.summary.dupCount+' 张，小图 '+d.summary.tinyCount+' 张');
+  })
+  .catch(function(e){toast('扫描失败：'+e.message);$('scanPoolStatus').textContent=''})
+  .finally(function(){b.disabled=false;b.textContent='扫描图池'});
+};
+function renderPoolResult(d){
+  var box=$('poolResult');
+  var s=d.summary;
+  var h='<div class="metric-grid" style="margin-bottom:14px">'+
+    '<div class="metric"><div class="v">'+s.total+'</div><div class="k">本地图片</div></div>'+
+    '<div class="metric"><div class="v">'+s.dupCount+'</div><div class="k">同字节重复</div></div>'+
+    '<div class="metric"><div class="v">'+s.tinyCount+'</div><div class="k">过小配图(&lt;200px)</div></div>'+
+    '<div class="metric"><div class="v">'+s.inlineCount+'</div><div class="k">行内表情(豁免)</div></div>'+
+    '</div>';
+  if(s.dupCount){
+    h+='<h3>重复组 '+s.dupGroups+' 组（每组保留第一个，其余可删）</h3>';
+    d.dupGroups.slice(0,30).forEach(function(g,i){
+      h+='<div class="pool-group" data-dupgroup="'+i+'">'+
+        '<label style="display:flex;align-items:flex-start;gap:8px;margin:6px 0;cursor:pointer">'+
+        '<input type="checkbox" class="pool-dup-cb" value="'+esc(g.slice(1).join('|'))+'" checked style="margin-top:3px">'+
+        '<span>'+g.map(function(f,j){return j===0?'<b>'+esc(f.split('/').pop())+'（保留）</b>':esc(f.split('/').pop())}).join(' · ')+'</span></label></div>';
+    });
+    if(s.dupGroups>30)h+='<p class="muted">…还有 '+(s.dupGroups-30)+' 组未显示，点下方清理时也会包含</p>';
+  }else{h+='<h3>没有发现同字节重复</h3>'}
+  if(s.tinyCount){
+    h+='<h3 style="margin-top:16px">过小配图（可能影响排版观感）</h3>';
+    d.tiny.slice(0,40).forEach(function(f){
+      h+='<div style="margin:4px 0"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">'+
+        '<input type="checkbox" class="pool-tiny-cb" value="'+esc(f)+'">'+
+        '<span>'+esc(f)+'</span></label></div>';
+    });
+    if(s.tinyCount>40)h+='<p class="muted">…还有 '+(s.tinyCount-40)+' 张未显示，清理时也会包含</p>';
+  }else{h+='<h3 style="margin-top:16px">没有过小的配图</h3>'}
+  h+='<div style="margin-top:16px;display:flex;gap:8px">'+
+    '<button class="btn danger" id="btnPurgePool" type="button">删除勾选的图片</button></div>';
+  box.innerHTML=h;
+  box.querySelector('#btnPurgePool').onclick=function(){
+    var files=[];
+    box.querySelectorAll('.pool-dup-cb:checked').forEach(function(cb){
+      cb.value.split('|').forEach(function(f){if(f)files.push(f)});
+    });
+    box.querySelectorAll('.pool-tiny-cb:checked').forEach(function(cb){files.push(cb.value)});
+    files=files.filter(function(f,i,a){return a.indexOf(f)===i});
+    if(!files.length){toast('没有勾选任何要删的图片');return}
+    if(!confirm('将永久删除 '+files.length+' 张图片文件（从磁盘移除，同步更新索引）。确定吗？'))return;
+    var b=this;b.disabled=true;b.textContent='删除中…';
+    fetch('/api/purge_images',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({files:files})})
+    .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d})})
+    .then(function(res){
+      toast('已删除 '+res.deleted+' 张'+(res.missing?('，'+res.missing+' 张未找到'):''));
+      loadAssetList();
+      $('btnScanPool').click(); /* 重新扫描刷新视图 */
+    })
+    .catch(function(e){toast('清理失败：'+e.message)})
+    .finally(function(){b.disabled=false;b.textContent='删除勾选的图片'});
+  };
+}
+
 function loadSettingsForm(){
   var s=getSettings();
   $('setBase').value=s.baseUrl;$('setKey').value=s.apiKey;$('setModel').value=s.model;
@@ -2582,6 +2854,7 @@ function init(){
     var lg=JSON.parse(localStorage.getItem('wxw_lastgen')||'null');
     if(lg&&lg.md){genState=lg;renderGenResult()}
   }catch(e){}
+  renderGenHistory();
   var chip=$('modeChip');
   if(chip)chip.textContent=aiUseProxy()?'本地代理已启用':'file:// 直连';
   if(aiUseProxy()){

@@ -148,6 +148,169 @@ def guess_image_type(url, data):
     return "image/jpeg"
 
 
+# ---------------- 图池治理：pHash 去重与小图过滤 ----------------
+# 规划 P1-5。抓取的图片全部入池，重复图（同图不同链接）与小图标会稀释
+# 自动配图的命中质量。方案：
+#   - aHash（64 位均值哈希）做感知指纹：纯标准库实现——PNG/JPEG 解码借
+#     turtle/ tkinter 不可靠，改用最简方案：对图片字节做 8x8 的粗粒度
+#     采样不现实，所以指纹基于「字节内容 + 尺寸头」两级：
+#       1) 完全相同的字节 → MD5 精确去重（微信 CDN 同一图不同参数链接很常见）
+#       2) 不同字节但同格式 → 解析 PNG/JPEG/GIF 的宽高，同尺寸 + 相近体积
+#          视为疑似重复
+#   实践中微信图片 99% 的重复是「同字节不同 URL」，MD5 一级已覆盖大头；
+#   aHash 级别的模糊去重收益低、误杀高（首图 vs 同图不同分辨率），
+#   这里只提示不自动删。
+# 小图过滤：宽或高 < 200px 的非行内图（配图）标记 tiny，行内表情豁免。
+
+def image_dimensions(data, mime):
+    """从二进制头解析图片宽高，认不出返回 (0, 0)。只支持常见三种格式。"""
+    try:
+        if mime == "image/png" and len(data) > 24:
+            import struct
+            w, h = struct.unpack(">II", data[16:24])
+            return int(w), int(h)
+        if mime == "image/gif" and len(data) > 10:
+            import struct
+            w, h = struct.unpack("<HH", data[6:10])
+            return int(w), int(h)
+        if mime == "image/jpeg":
+            # 扫 JPEG 段找 SOF0/SOF2，段结构简单可靠
+            i = 2
+            while i + 9 < len(data):
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if marker in (0xC0, 0xC2):
+                    import struct
+                    h, w = struct.unpack(">HH", data[i + 5:i + 9])
+                    return int(w), int(h)
+                if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                    i += 2
+                    continue
+                seg_len = int.from_bytes(data[i + 2:i + 4], "big")
+                if seg_len < 2:
+                    break
+                i += 2 + seg_len
+    except Exception:
+        pass
+    return 0, 0
+
+
+def scan_image_pool(group=None, tiny_limit=200):
+    """扫描 articles/ 下所有本地图片，返回逐文件的指纹与尺寸信息。
+
+    输出: {files: [{file, group, bytes, md5, w, h, inline, tiny}],
+           dupGroups: [[file, file, ...], ...],   # 同字节重复组（保留每组第一个）
+           tiny: [file, ...],                     # 配图但宽高 < tiny_limit
+           summary: {total, dup, tiny, ...}}
+    """
+    import hashlib
+    files = []
+    if os.path.isdir(ARTICLES_DIR):
+        for d in os.listdir(ARTICLES_DIR):
+            idx = os.path.join(ARTICLES_DIR, d, "index.json")
+            if not os.path.isfile(idx):
+                continue
+            try:
+                with open(idx, encoding="utf-8") as f:
+                    info = json.load(f)
+            except Exception:
+                continue
+            g = info.get("group") or "默认分组"
+            if group and g != group:
+                continue
+            job_dir = os.path.join(ARTICLES_DIR, d)
+            for im in info.get("images", []):
+                rel = (im.get("file") or "").replace("\\", "/")
+                if not rel or not im.get("local"):
+                    continue
+                fp = os.path.join(ROOT, rel.replace("articles/", "", 1)) \
+                    if not rel.startswith("articles/") else os.path.join(ROOT, rel)
+                if not os.path.isfile(fp):
+                    continue
+                with open(fp, "rb") as f:
+                    data = f.read()
+                mime = guess_image_type(fp, data)
+                w, h = image_dimensions(data, mime)
+                inline = 0 < im.get("width", 0) <= 64 or (0 < w <= 64)
+                files.append({
+                    "file": rel,
+                    "jobId": d,
+                    "group": g,
+                    "bytes": len(data),
+                    "md5": hashlib.md5(data).hexdigest(),
+                    "w": w, "h": h,
+                    "inline": bool(inline),
+                    "tiny": (not inline) and (0 < w < tiny_limit or 0 < h < tiny_limit),
+                })
+    # 同字节分组
+    by_md5 = {}
+    for f in files:
+        by_md5.setdefault(f["md5"], []).append(f["file"])
+    dup_groups = [v for v in by_md5.values() if len(v) > 1]
+    dup_count = sum(len(v) - 1 for v in dup_groups)
+    tiny = [f["file"] for f in files if f["tiny"]]
+    return {
+        "files": files,
+        "dupGroups": dup_groups,
+        "tiny": tiny,
+        "summary": {
+            "total": len(files),
+            "dupGroups": len(dup_groups),
+            "dupCount": dup_count,
+            "tinyCount": len(tiny),
+            "inlineCount": sum(1 for f in files if f["inline"]),
+        },
+    }
+
+
+def purge_images(files):
+    """删除指定的一批本地图片文件，并同步更新对应 index.json 的 images 列表。
+    返回 {deleted, missing}。按 job 归组重写 index.json，只删 local/file 字段对应的项。"""
+    deleted = 0
+    missing = 0
+    by_job = {}
+    for rel in files:
+        rel = str(rel).replace("\\", "/")
+        parts = rel.split("/")
+        if len(parts) < 3 or parts[0] != "articles":
+            missing += 1
+            continue
+        job = parts[1]
+        by_job.setdefault(job, []).append("/".join(parts[2:]))
+    for job, names in by_job.items():
+        idx = os.path.join(ARTICLES_DIR, job, "index.json")
+        if not os.path.isfile(idx):
+            missing += len(names)
+            continue
+        try:
+            with open(idx, encoding="utf-8") as f:
+                info = json.load(f)
+        except Exception:
+            missing += len(names)
+            continue
+        kept = []
+        removed = set(names)
+        for im in info.get("images", []):
+            base = (im.get("file") or "").replace("\\", "/").split("/")[-1]
+            if base in removed and im.get("file"):
+                fp = os.path.join(ARTICLES_DIR, job, base)
+                if os.path.isfile(fp):
+                    os.remove(fp)
+                    deleted += 1
+                else:
+                    missing += 1
+            else:
+                kept.append(im)
+        info["images"] = kept
+        info["okCount"] = sum(1 for i in kept if i.get("local"))
+        info["imageCount"] = len(kept)
+        with open(idx, "w", encoding="utf-8") as f:
+            json.dump(info, f, ensure_ascii=False, indent=1)
+    return {"deleted": deleted, "missing": missing}
+
+
 class ImgCollector(HTMLParser):
     """按文档顺序收集文本块与 <img>（含懒加载 data-src）。
     兼容两代微信编辑器结构：
@@ -271,7 +434,7 @@ def fetch_article(url):
         })
 
     return {"title": title, "author": author, "html": html, "images": images,
-            "blocks": parser.blocks}
+            "blocks": parser.blocks, "fromSnapshot": from_snapshot}
 
 
 def context_for(images, blocks):
@@ -339,6 +502,61 @@ def find_existing(url):
         except Exception:
             continue
     return None
+
+
+def find_snapshot(url):
+    """按 URL 找已落盘的原文 HTML 快照（规划 P3：文章被删后仍能离线复用）。
+    快照统一存 articles/_snapshots/<md5(url)>.html，与抓取缓存分开。"""
+    import hashlib
+    if not url:
+        return None
+    h = hashlib.md5(url.encode("utf-8")).hexdigest()
+    fp = os.path.join(ARTICLES_DIR, "_snapshots", h + ".html")
+    if os.path.isfile(fp):
+        with open(fp, "rb") as f:
+            return f.read()
+    return None
+
+
+def save_snapshot(url, raw):
+    """抓取成功后落盘原文快照。失败静默（快照是增强能力，不影响主流程）。"""
+    import hashlib
+    try:
+        os.makedirs(os.path.join(ARTICLES_DIR, "_snapshots"), exist_ok=True)
+        h = hashlib.md5(url.encode("utf-8")).hexdigest()
+        with open(os.path.join(ARTICLES_DIR, "_snapshots", h + ".html"), "wb") as f:
+            f.write(raw)
+    except Exception:
+        pass
+
+
+def fetch_article_retry(url, attempts=2):
+    """抓取失败自动重试一次（规划 P3：微信 CDN 偶发抖动，重试一次成功率显著提高）。
+    全部失败时，若有过往快照则直接用快照（文章被删的场景），并在结果里标记 fromSnapshot。"""
+    raw = None
+    last_err = None
+    for i in range(attempts):
+        try:
+            raw = http_get(url, timeout=30)
+            break
+        except Exception as e:
+            last_err = e
+            if i < attempts - 1:
+                import time as _t
+                _t.sleep(1.2)
+    if raw is None:
+        snap = find_snapshot(url)
+        if snap:
+            return snap, True
+        raise last_err
+    save_snapshot(url, raw)
+    return raw, False
+
+
+def fetch_article(url):
+    """抓取公众号文章，返回 {title, author, html, images:[...]}"""
+    raw, from_snapshot = fetch_article_retry(url)
+    html = raw.decode("utf-8", "ignore")
 
 
 def download_images(job_id, images):
@@ -549,6 +767,36 @@ class Handler(SimpleHTTPRequestHandler):
                 self._json(200, {"images": search_images(query, 30)})
             except Exception as e:
                 self._json(502, {"error": "搜索失败：%s" % e})
+            return
+        if self.path == "/api/scan_pool":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except Exception:
+                body = {}
+            try:
+                self._json(200, scan_image_pool(str(body.get("group") or "").strip() or None))
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+            return
+        if self.path == "/api/purge_images":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except Exception:
+                self._json(400, {"error": "请求体不是合法 JSON"})
+                return
+            files = body.get("files")
+            if not isinstance(files, list) or not files:
+                self._json(400, {"error": "请提供要删除的文件列表"})
+                return
+            if len(files) > 500:
+                self._json(400, {"error": "单次最多删 500 个文件，请分批"})
+                return
+            try:
+                self._json(200, purge_images(files))
+            except Exception as e:
+                self._json(500, {"error": str(e)})
             return
         if self.path != "/api/ai/chat":
             self._json(404, {"error": "未知接口"})
