@@ -214,6 +214,101 @@ function finish() {
   check('小米-有样例段落', xr.samples.length > 0, true);
   check('小米-节奏可算', xr.rhythm.max > 0, true);
 
+  console.log('== 新增功能（导出 MD / 阅读时间 / 排版微调）==');
+  /* 1) 排版微调：覆盖值生效且不污染档案 */
+  const prof = w.findProfile('_default') || w.DEFAULT_PROFILE;
+  const baseCss = JSON.stringify(prof.css);
+  w.styleOverrides = { fontSize: 17, color: '#7f4f21', lineHeight: 0 };
+  const tuned = w.applyStyleOverrides(prof.css);
+  check('微调-字号覆盖', tuned.fontSize, 17);
+  check('微调-主色覆盖', tuned.color, '#7f4f21');
+  check('微调-未覆盖项沿用档案', tuned.lineHeight, prof.css.lineHeight);
+  check('微调-不改档案本身', JSON.stringify(prof.css), baseCss);
+  /* 2) 覆盖后导出 HTML 带新样式 */
+  w.genState.profileId = '_default';
+  w.genState.md = '# 微调测试标题\n\n这是正文段落，用来验证排版微调是否作用于导出。';
+  w.renderGenResult();
+  const tunedHtml = w.buildWechatHtml();
+  check('微调-导出含覆盖字号', tunedHtml.html.indexOf('font-size:17px') >= 0, true);
+  check('微调-导出含覆盖主色', tunedHtml.html.indexOf('#7f4f21') >= 0, true);
+  /* 3) 清除微调恢复档案值 */
+  w.styleOverrides = { fontSize: 0, color: '', lineHeight: 0 };
+  const restored = w.applyStyleOverrides(prof.css);
+  check('微调-清除后恢复档案值', JSON.stringify(restored), baseCss);
+  const restoredHtml = w.buildWechatHtml();
+  /* 注意标题字号恒为 fontSize+2（15+2=17px），所以用覆盖主色是否消失来判断 */
+  check('微调-导出不含覆盖主色', restoredHtml.html.indexOf('#7f4f21') === -1, true);
+  check('微调-导出正文恢复档案字号', restoredHtml.html.indexOf('font-size:15px') >= 0, true);
+  /* 4) 阅读时间：900 字约 3 分钟 */
+  const mdForRt = '# 阅读时间测试\n\n' + '测'.repeat(900);
+  w.genState.md = mdForRt;
+  w.updateWordCount();
+  const wcText = w.document.getElementById('wordCount').textContent;
+  check('阅读时间-900字约3分钟', wcText.indexOf('3 分钟') >= 0, true);
+  /* 5) 导出 MD：标题提取与文件名清洗（jsdom 无下载，验证清洗逻辑用的同一表达式） */
+  const title = (mdForRt.match(/^#\s+(.+)$/m) || [])[1];
+  check('导出MD-标题提取', title, '阅读时间测试');
+  const name = String(title || '').replace(/[\\/:*?"<>|\s]+/g, '_');
+  check('导出MD-文件名清洗', /^[^\\/:*?"<>|]+$/.test(name), true);
+
+  console.log('== 本轮新增：外链转脚注 / 论证简报 / 语气锚点 ==');
+  /* 1) 链接渲染：Markdown 链接 → <a>，且不影响槽位标记 */
+  w.styleOverrides = { fontSize: 0, color: '', lineHeight: 0 };
+  w.genState.profileId = '_default';
+  w.genState.md = '# 链接测试\n\n参考 [OpenAI 官方文档](https://platform.openai.com/docs) 的说明。\n\n内链 [微信文章](https://mp.weixin.qq.com/s/abc) 保持可点击。\n\n[图：示例图]';
+  w.renderGenResult();
+  const previewHtml = w.document.getElementById('previewBody').innerHTML;
+  check('链接-渲染为a标签', previewHtml.indexOf('<a href="https://platform.openai.com/docs"') >= 0, true);
+  check('链接-微信内链也渲染', previewHtml.indexOf('<a href="https://mp.weixin.qq.com/s/abc"') >= 0, true);
+  check('链接-槽位标记未受影响', previewHtml.indexOf('data-desc="示例图"') >= 0, true);
+  /* 2) 导出：外链转「文字+角标」，文末生成参考资料 */
+  const linkOut = w.buildWechatHtml().html;
+  check('外链脚注-正文外链不再是a', linkOut.indexOf('<a href="https://platform.openai.com/docs"') === -1, true);
+  check('外链脚注-保留链接文字', linkOut.indexOf('OpenAI 官方文档') >= 0, true);
+  check('外链脚注-生成角标编号', linkOut.indexOf('vertical-align:super') >= 0, true);
+  check('外链脚注-生成参考资料区块', linkOut.indexOf('参考资料') >= 0, true);
+  check('外链脚注-网址以纯文本保留', linkOut.indexOf('platform.openai.com/docs') >= 0, true);
+  check('外链脚注-微信内链仍可点击', linkOut.indexOf('<a href="https://mp.weixin.qq.com/s/abc"') >= 0, true);
+  /* 3) 无外链时不生成参考资料区块 */
+  w.genState.md = '# 无外链测试\n\n这段没有任何链接。';
+  w.renderGenResult();
+  check('外链脚注-无外链不加区块', w.buildWechatHtml().html.indexOf('参考资料') === -1, true);
+  /* 4) 重复导出不累积脚注（编号不越编越大） */
+  w.genState.md = '# 重复导出\n\n看 [A](https://a.example.com) 和 [B](https://b.example.com)。';
+  w.renderGenResult();
+  w.buildWechatHtml();
+  const twice = w.buildWechatHtml().html;
+  check('外链脚注-重复导出编号重置', twice.indexOf('[1]') >= 0 && twice.indexOf('[3]') === -1, true);
+  /* 5) 简报函数：有数据时输出、缺字段时返回空串（兼容内置档案与早期档案） */
+  const emptyP = { css: {}, anchors: null, argument: null };
+  check('简报-缺argument返回空串', w.argumentBrief(emptyP), '');
+  check('简报-缺anchors返回空串', w.anchorBrief(emptyP), '');
+  check('简报-total为0也返回空串', w.argumentBrief({ argument: { total: 0 } }), '');
+  const richP = {
+    argument: { total: 20, data: 40, quote: 10, first: 30, question: 15, colloquial: 25 },
+    anchors: {
+      open: '先说结论：这东西我真买了。', close: '就这样，散了吧。',
+      data: '续航 12 小时，比上代多了 3 小时。', short: '没了。',
+      oral: '你懂我意思吧？',
+      long: '这是一段偏长的展开段落，用来说明语气锚点里的长句样例是怎么进入提示词的。'
+    }
+  };
+  const ab = w.argumentBrief(richP);
+  check('简报-论证含数据占比', ab.indexOf('40%') >= 0, true);
+  check('简报-论证含段落总数', ab.indexOf('20 个段落') >= 0, true);
+  const nb = w.anchorBrief(richP);
+  check('简报-锚点含开篇', nb.indexOf('先说结论') >= 0, true);
+  check('简报-锚点含收尾', nb.indexOf('散了吧') >= 0, true);
+  check('简报-锚点含短句成段', nb.indexOf('没了。') >= 0, true);
+  check('简报-锚点声明不许抄内容', nb.indexOf('不许照抄') >= 0, true);
+  /* 6) 两段简报确实进了生成提示词 */
+  const gpLinked = w.buildGenPrompt(richP, '测试主题', '- 要点', '短（600-900字）', '');
+  check('简报-论证已注入提示词', gpLinked.indexOf('论证方式') >= 0, true);
+  check('简报-锚点已注入提示词', gpLinked.indexOf('语气锚点') >= 0, true);
+  /* 7) 内置档案（无这些字段）时提示词仍能正常生成，不抛错 */
+  const gpDefault = w.buildGenPrompt(w.DEFAULT_PROFILE, '测试主题', '- 要点', '短（600-900字）', '');
+  check('简报-内置档案提示词可用', gpDefault.length > 500, true);
+
   console.log('== 结果 ==');
   console.log(`PASS ${pass}, FAIL ${fail}`);
   process.exit(fail ? 1 : 0);

@@ -117,6 +117,37 @@ def http_get(url, timeout=30, ua=UA):
         return resp.read()
 
 
+def guess_image_type(url, data):
+    """按文件头魔数推断图片 MIME 类型。
+
+    原先一律返回 image/jpeg，遇到 PNG/GIF/WebP 时浏览器按 JPEG 解码会失败或显示异常。
+    先看魔数（可靠，不依赖 URL），认不出再退回扩展名，最后兜底 image/jpeg。
+    纯函数、无副作用，便于单测覆盖各种格式。
+    """
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:2] == b"BM":
+        return "image/bmp"
+    if data[:4] in (b"II*\x00", b"MM\x00*"):
+        return "image/tiff"
+    head = data[:300].lstrip().lower()
+    if head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in head):
+        return "image/svg+xml"
+    path = url.split("?")[0].split("#")[0].lower()
+    for ext, mime in ((".png", "image/png"), (".gif", "image/gif"), (".webp", "image/webp"),
+                      (".svg", "image/svg+xml"), (".bmp", "image/bmp"),
+                      (".jpg", "image/jpeg"), (".jpeg", "image/jpeg")):
+        if path.endswith(ext):
+            return mime
+    return "image/jpeg"
+
+
 class ImgCollector(HTMLParser):
     """按文档顺序收集文本块与 <img>（含懒加载 data-src）。
     兼容两代微信编辑器结构：
@@ -366,7 +397,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 data = http_get(target, timeout=20)
                 self.send_response(200)
-                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Type", guess_image_type(target, data))
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "public, max-age=86400")
                 self.end_headers()

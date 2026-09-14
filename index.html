@@ -207,6 +207,8 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
       <select id="autoFillGroup" style="max-width:180px" title="自动配图的取图范围"></select>
       <button class="btn" id="btnEditMd" type="button">编辑 Markdown</button>
       <button class="btn" id="btnExport" type="button">导出 HTML</button>
+      <button class="btn" id="btnExportMd" type="button" title="导出 Markdown 源稿，可再编辑或存档">导出 MD</button>
+      <button class="btn" id="btnTuneStyle" type="button" title="在风格档案基础上微调字号与主色，不改档案本身">排版微调</button>
       <button class="btn danger" id="btnClearResult" type="button">清空</button>
       <span class="muted" id="wordCount" style="margin-left:4px;font-variant-numeric:tabular-nums"></span>
     </div>
@@ -336,6 +338,8 @@ var DEFAULT_PROFILE={id:'_default',name:'通用清爽风（内置）',createdAt:
   rhythm:{avg:4,max:6},
   features:{strong:0,em:0,quote:0,hr:0,table:0,emoji:0},
   samples:['（内置档案没有样例段落）'],
+  anchors:{open:'',close:'',data:'',short:'',oral:'',long:''},
+  argument:{total:0,data:0,quote:0,first:0,question:0,colloquial:0},
   tone:'口语化、自然、轻松，适度使用网络用语，一句一段'};
 function loadProfiles(){try{return JSON.parse(localStorage.getItem('wxw_profiles')||'[]')}catch(e){return[]}}
 function saveProfiles(list){localStorage.setItem('wxw_profiles',JSON.stringify(list))}
@@ -479,8 +483,85 @@ function analyzeHtml(html){
       table:root.querySelectorAll('table').length,
       emoji:emojiCount
     },
-    samples:nonEmpty.slice(0,3).map(function(t){return t.length>300?t.slice(0,300)+'…':t})
+    samples:nonEmpty.slice(0,3).map(function(t){return t.length>300?t.slice(0,300)+'…':t}),
+    anchors:pickAnchorParagraphs(nonEmpty),
+    argument:profileArgument(nonEmpty)
   };
+}
+/* 风格锚点段落：按用途给真实段落打标签，生成时作为 few-shot 锚点注入。
+   依据（同类项目调研）：dev.to 的对照实验显示，保留原始结构的样本显著优于压平成中性段落的样本，
+   所以这里存原文、不做摘要改写；每类只取 1 段，控制信噪比。 */
+function pickAnchorParagraphs(paras){
+  var out={open:'',close:'',data:'',short:'',oral:'',long:''};
+  var pool=(paras||[]).filter(function(t){return t&&t.length>=10&&t.length<=140});
+  if(!pool.length)return out;
+  out.open=pool[0];
+  out.close=pool[pool.length-1];
+  function find(re){
+    for(var i=0;i<pool.length;i++){if(re.test(pool[i]))return pool[i]}
+    return '';
+  }
+  out.data=find(/\d/);                                      /* 含具体数字：数据型论据 */
+  out.short=find(/^[\s\S]{1,18}$/);                         /* 极短段：短句成段的节奏 */
+  out.oral=find(/[？?！!]|吧|呢|啊|哈|其实|说实话|我觉得/);    /* 口语化、带互动感的段 */
+  out.long=find(/^[\s\S]{60,140}$/);                        /* 偏长的展开段 */
+  return out;
+}
+/* 论证方式画像：统计论据类型占比。纯规则统计，不额外调用模型，结果可逐项复核。 */
+function profileArgument(paras){
+  var list=(paras||[]).filter(function(t){return t&&t.length>=8});
+  var n=list.length||1;
+  var data=0,quote=0,first=0,question=0,colloquial=0;
+  list.forEach(function(t){
+    if(/\d/.test(t))data++;
+    if(/[「“"][^」”"]{2,40}[」”"]/.test(t))quote++;
+    if(/(我|咱|俺)[^，。；]{0,8}(试|用|看|买|测|跑|写|问|去|吃|玩|翻)/.test(t))first++;
+    if(/[？?]/.test(t))question++;
+    if(/吧|呢|啊|哈|嘛|其实|说实话|说真的|怎么说/.test(t))colloquial++;
+  });
+  function pct(x){return Math.round(x/n*100)}
+  return {total:n,data:pct(data),quote:pct(quote),first:pct(first),question:pct(question),colloquial:pct(colloquial)};
+}
+/* 论证方式简报：把 profileArgument 的统计写进提示词，让新稿的论据组织方式也贴近目标号。
+   对应同类项目 writing-dna-skill 六层框架里的「素材策略」层——只量化表层语言不足以像，
+   还得让「靠什么支撑观点」也一致。
+   档案里没有该字段（内置档案或早期保存的档案）时返回空串，保持向后兼容。 */
+function argumentBrief(p){
+  var a=p&&p.argument;
+  if(!a||!a.total)return '';
+  var parts=[];
+  if(a.data)parts.push(a.data+'% 的段落用具体数字或数据支撑观点');
+  if(a.quote)parts.push(a.quote+'% 引述他人说法或对话');
+  if(a.first)parts.push(a.first+'% 写亲身经历（「我试过」「我去看了」这类）');
+  if(a.question)parts.push(a.question+'% 带反问或提问，把读者拉进来');
+  if(a.colloquial)parts.push(a.colloquial+'% 带口语语气词（吧、呢、其实）');
+  if(!parts.length)return '';
+  return '\n- 论证方式（统计自样例文章 '+a.total+' 个段落）：'+parts.join('；')+
+         '。请按大致相同的比例组织论据，不要通篇只有观点、没有具体支撑';
+}
+/* 语气锚点简报：把 pickAnchorParagraphs 挑出的真实段落作为 few-shot 锚点注入。
+   依据（同类项目调研）：style-retrieval 的盲评对照实验显示，从语料里检索真实范例注入
+   （平均排名 1.74）优于只给风格参数描述；范例保留原始结构与口语细节，摘要改写反而损失信息。
+   只给语气与节奏参照，明确要求不抄内容，避免变成洗稿。 */
+function anchorBrief(p){
+  var a=p&&p.anchors;
+  if(!a)return '';
+  /* 每类的最低字数：短句成段这一类的价值就在于「短」，若也要求 8 字以上，
+     它会被永久过滤掉、等于没实现——所以单独放宽到 2 字。 */
+  var rows=[
+    ['开篇',a.open,8],
+    ['数据型论据',a.data,8],
+    ['口语互动',a.oral,8],
+    ['短句成段',a.short,2],
+    ['展开段',a.long,8],
+    ['收尾',a.close,8]
+  ].filter(function(r){return r[1]&&String(r[1]).trim().length>=r[2]});
+  if(!rows.length)return '';
+  var out='\n\n【语气锚点（摘自样例文章的真实段落，只学语气、节奏和细节密度，内容一律不许照抄）】\n';
+  rows.forEach(function(r){
+    out+='- '+r[0]+'｜'+String(r[1]).replace(/\s+/g,' ').trim()+'\n';
+  });
+  return out;
 }
 function parseStyle(st){
   var out={};st=st||'';
@@ -846,7 +927,10 @@ function buildGenPrompt(p,topic,points,len,extra){
   '- 每个自然段平均约 '+avgLen+' 字，任何一段不超过 '+maxLen+' 字，短句成段是常态\n'+
   '- 图文节奏：大约每 '+rhythm+' 个段落安排一张配图\n'+
   '- 行内小表情：全文约 '+emojiN+' 个，放在语气转折、情绪、强调处，不要密集\n'+
-  '- 语言风格：'+tone+'\n\n'+
+  '- 语言风格：'+tone+'\n'+
+  argumentBrief(p)+
+  anchorBrief(p)+
+  '\n'+
   '【任务】\n'+
   '文章主题/标题方向：'+topic+'\n'+
   '必须覆盖的要点：\n'+points+'\n'+
@@ -1073,6 +1157,12 @@ function mdToBlocks(md){
 function inlineFmt(text){
   var s=esc(text).replace(/\n/g,'<br>');
   s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  /* Markdown 链接 [文字](https://…)。放在槽位规则之前：槽位只认「图/表情」开头，
+     与链接语法不冲突。外链在导出阶段会被转成脚注（见 cleanInline），
+     这里先渲染成 <a> 便于预览，也保留微信内链可点击的特性。 */
+  s=s.replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^\s)]+)\)/g,function(m,label,href){
+    return '<a href="'+href+'" style="color:inherit;border-bottom:1px solid currentColor;text-decoration:none;">'+label+'</a>';
+  });
   s=s.replace(/\[(图|表情)[：:]\s*([^\]]+)\]/g,function(m,kind,desc){
     return '<span class="slot '+(kind==='图'?'slot-img':'slot-emoji')+'" data-kind="'+kind+'" data-desc="'+desc+'" title="点击填充">'+kind+'：'+desc+'</span>';
   });
@@ -1102,12 +1192,16 @@ function renderGenResult(){
   updateWordCount();
   $('mdEditor').value=genState.md;
 }
-/* 生成结果工具栏右侧的实时字数（真实口径：汉字+全角标点，不含槽位标记和标题） */
+/* 生成结果工具栏右侧的实时字数（真实口径：汉字+全角标点，不含槽位标记和标题）。
+   附预计阅读时间——公众号官方口径约 300 字/分钟（读起来略快的速读口径），
+   取整到半分钟，短文不显示 0 分钟。 */
 function updateWordCount(){
   var el=$('wordCount');
   if(!el)return;
   var n=countCnWords(genState.md);
-  el.textContent='正文 '+n+' 字';
+  var mins=n/300;
+  var rt=mins<1?(mins<0.5&&n>0?'不到半分钟':Math.round(mins*2)/2+' 分钟'):Math.round(mins)+' 分钟';
+  el.textContent='正文 '+n+' 字 · 约 '+rt+'读完';
   el.style.color=(n>0&&n<1200)?'#BA7517':''; /* 偏短提醒 */
 }
 function renderBlock(b){
@@ -1385,7 +1479,9 @@ $('btnRefill').onclick=function(){
 /* ---------- 复制到微信 ---------- */
 function buildWechatHtml(){
   var p=findProfile(genState.profileId)||DEFAULT_PROFILE;
-  var c=p.css;
+  var c=applyStyleOverrides(p.css); /* 排版微调对导出同样生效 */
+  linkFootnotes=[];                 /* 每次导出重新收集外链，避免跨次累积 */
+  exportAccent=c.color;
   var pStyle='font-size:'+c.fontSize+'px;color:'+c.color+';line-height:'+c.lineHeight+'em;margin-left:8px;margin-right:8px;text-align:'+c.textAlign+';';
   var out=[];
   var unfilled=0;
@@ -1417,7 +1513,26 @@ function buildWechatHtml(){
       out.push('<p style="'+pStyle+'">'+cleanInline(node)+'</p>');
     }
   });
-  return {html:'<section style="margin:0 auto;">'+out.join('\n')+'</section>',unfilled:unfilled};
+  return {html:'<section style="margin:0 auto;">'+out.join('\n')+footnoteBlock()+'</section>',unfilled:unfilled};
+}
+/* ---------- 外链转脚注（借鉴 md-wechat / mdnice 的通用做法）---------- */
+/* 公众号只保留 mp.weixin.qq.com 域名的可点击链接，其余外链在粘贴时会被编辑器直接剥掉、
+   网址一并丢失，保存时还可能提示「请勿插入非 mp.weixin.qq.com 的域名链接」。
+   导出时把外链转成「文字 + [n] 角标」，网址统一收进文末【参考资料】以纯文本保留，
+   既留住信息，也能被搜到。微信内链不受影响、保持可点击。 */
+var linkFootnotes=[];
+var exportAccent='';
+function isWeixinLink(href){
+  return /^https?:\/\/mp\.weixin\.qq\.com(\/|$)/i.test(href||'');
+}
+function footnoteBlock(){
+  if(!linkFootnotes.length)return '';
+  var items=linkFootnotes.map(function(f,i){
+    var line=(f.text&&f.text!==f.href)?('['+(i+1)+'] '+f.text+'：'+f.href):('['+(i+1)+'] '+f.href);
+    return '<p style="margin:0.3em 0;font-size:0.86em;color:'+exportAccent+';word-break:break-all;">'+esc(line)+'</p>';
+  }).join('');
+  return '\n<section style="margin:2.2em 8px 0;padding-top:0.9em;border-top:1px solid #c8ccd0;">'+
+         '<p style="margin:0 0 0.55em;font-weight:700;color:'+exportAccent+';">参考资料</p>'+items+'</section>';
 }
 function cleanInline(node){
   var c=node.cloneNode(true);
@@ -1443,6 +1558,22 @@ function cleanInline(node){
   c.querySelectorAll('img.inline-emoji').forEach(function(im){
     im.setAttribute('style','width:'+(im.dataset.w||35)+'px !important;vertical-align:middle;border:0;');
     im.removeAttribute('class');
+  });
+  /* 外链转脚注：微信内链保持可点击，其余换成「文字 + [n]」，网址收进文末参考资料 */
+  c.querySelectorAll('a[href]').forEach(function(a){
+    var href=a.getAttribute('href')||'';
+    if(!href||isWeixinLink(href))return;
+    var text=(a.textContent||'').trim()||href;
+    linkFootnotes.push({text:text,href:href});
+    var wrap=document.createElement('span');
+    wrap.setAttribute('style','color:inherit;');
+    wrap.textContent=text;
+    var mark=document.createElement('span');
+    mark.setAttribute('style','font-size:0.72em;vertical-align:super;color:'+exportAccent+';margin-left:0.25em;');
+    mark.textContent='['+linkFootnotes.length+']';
+    var frag=document.createDocumentFragment();
+    frag.appendChild(wrap);frag.appendChild(mark);
+    a.parentNode.replaceChild(frag,a);
   });
   return c.innerHTML;
 }
@@ -1483,6 +1614,66 @@ $('btnExport').onclick=function(){
   a.download='article_'+Date.now()+'.html';
   a.click();URL.revokeObjectURL(a.href);
   toast('已导出');
+};
+/* 导出 Markdown 源稿：保留可再编辑的原文（含配图槽位标记），文件名取文章标题 */
+$('btnExportMd').onclick=function(){
+  if(!genState.md){toast('还没有生成文章');return}
+  var title=(genState.md.match(/^#\s+(.+)$/m)||[])[1]||('article_'+Date.now());
+  var name=String(title).replace(/[\\/:*?"<>|\s]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40)||'article';
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([genState.md],{type:'text/markdown'}));
+  a.download=name+'.md';
+  a.click();URL.revokeObjectURL(a.href);
+  toast('已导出 Markdown 源稿');
+};
+/* 排版微调：会话级覆盖档案的字号/主色/行距，不改档案本身（借鉴 doocs/md 的主题定制面板） */
+var styleOverrides=loadStyleOverrides();
+function loadStyleOverrides(){
+  try{return JSON.parse(localStorage.getItem('wxw_styleOverrides')||'{}')}catch(e){return{}}
+}
+function saveStyleOverrides(){localStorage.setItem('wxw_styleOverrides',JSON.stringify(styleOverrides))}
+function applyStyleOverrides(css){
+  var c=Object.assign({},css);
+  if(styleOverrides.fontSize)c.fontSize=styleOverrides.fontSize;
+  if(styleOverrides.color)c.color=styleOverrides.color;
+  if(styleOverrides.lineHeight)c.lineHeight=styleOverrides.lineHeight;
+  return c;
+}
+$('btnTuneStyle').onclick=function(){
+  if(!genState.md){toast('还没有生成文章');return}
+  var p=findProfile(genState.profileId)||DEFAULT_PROFILE;
+  var c=applyStyleOverrides(p.css);
+  var box=document.createElement('div');
+  box.innerHTML=
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'+
+    '<label style="margin:0">字号 <select id="tuneFontSize"><option value="">档案值 '+esc(p.css.fontSize+'px')+'</option>'+
+    [13,14,15,16,17,18].map(function(v){return '<option value="'+v+'"'+(String(styleOverrides.fontSize)===String(v)?' selected':'')+'>'+v+'px</option>'}).join('')+
+    '</select></label>'+
+    '<label style="margin:0">主色 <select id="tuneColor"><option value="">档案值 '+esc(p.css.color)+'</option>'+
+    ['#1f2329','#4C4C4C','#7f4f21','#185FA5','#0C7B6C','#A32D2D','#6B4FA0'].map(function(v){return '<option value="'+v+'"'+(styleOverrides.color===v?' selected':'')+'>'+v+'</option>'}).join('')+
+    '</select></label>'+
+    '<label style="margin:0">行距 <select id="tuneLineHeight"><option value="">档案值 '+esc(p.css.lineHeight+'em')+'</option>'+
+    [1.5,1.6,1.75,1.8,2].map(function(v){return '<option value="'+v+'"'+(String(styleOverrides.lineHeight)===String(v)?' selected':'')+'>'+v+'em</option>'}).join('')+
+    '</select></label>'+
+    '</div>'+
+    '<p class="muted">只在当前浏览器覆盖显示与导出样式，不修改风格档案本身；重选档案或刷新后仍生效，清空后恢复档案值。</p>'+
+    '<div style="margin-top:10px"><button class="btn sm" id="tuneReset" type="button">恢复档案排版</button></div>';
+  openModal('排版微调（基于档案「'+esc(p.name)+'」）',box);
+  var selFs=box.querySelector('#tuneFontSize'),selCl=box.querySelector('#tuneColor'),selLh=box.querySelector('#tuneLineHeight');
+  selFs.onchange=selCl.onchange=selLh.onchange=function(){
+    var fs=selFs.value,cl=selCl.value,lh=selLh.value;
+    styleOverrides={fontSize:fs?+fs:0,color:cl||'',lineHeight:lh?+lh:0};
+    saveStyleOverrides();
+    renderGenResult();
+    toast('排版已更新');
+  };
+  box.querySelector('#tuneReset').onclick=function(){
+    styleOverrides={fontSize:0,color:'',lineHeight:0};
+    saveStyleOverrides();
+    closeModal();
+    renderGenResult();
+    toast('已恢复档案排版');
+  };
 };
 $('btnClearResult').onclick=function(){
   genState={profileId:null,md:''};
