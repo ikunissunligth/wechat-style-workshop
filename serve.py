@@ -682,9 +682,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return 200, {"items": db.eval_summary()}
             # 盲评抽题（服务端匿名：不下发风格名与模型）与联表导出
             if p == "/api/evaluations/next" and method == "GET":
-                return 200, {"items": db.eval_next(
+                return 200, db.eval_next(
                     int((q.get("count") or ["2"])[0]),
-                    (q.get("topic") or [None])[0])}
+                    (q.get("topic") or [None])[0],
+                    (q.get("mode") or ["same"])[0])
             if p == "/api/evaluations/export" and method == "GET":
                 return 200, {"items": db.eval_export()}
             # 抓取日志

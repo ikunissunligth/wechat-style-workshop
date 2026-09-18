@@ -559,31 +559,62 @@ def list_evaluations(generation_id=None):
         conn.close()
 
 
-def eval_next(count=2, topic=None):
+def eval_next(count=2, topic=None, mode="same"):
     """盲评抽题：随机取 count 篇生成稿，**只下发正文相关字段**。
 
     profile_id / profile_name / model 一律不下发——评委在客户端看不到来源，
     才算盲评；想作弊得另外发请求去查，那是自己拆自己的实验。
-    同主题优先（A/B 才有可比性）；凑不齐就退化为全库随机。
+    mode 决定「什么样的两篇才算可比」：
+      same（默认）——同主题**且同档案**。只有目标风格一致时，差异才来自生成设置
+        （开/关去 AI 味、有没有注入六层画像），A/B 偏好才有对照意义。
+      any ——只要同主题，用于横向比不同目标风格。
+    凑不齐就逐级退化（同档案 → 同主题 → 全库随机），并把实际用到的口径回给前端，
+    免得评委以为在做设置对照、其实比的是两种风格。
     """
     count = max(1, min(int(count or 2), 5))
     conn = connect()
     try:
+        pid = None
+        if mode == "same":
+            # 显式给了主题也要再找一次同档案配对，否则「指定主题」就永远拿不到 same 口径
+            if topic:
+                row = conn.execute(
+                    "SELECT profile_id FROM generation WHERE topic=? AND profile_id<>'' "
+                    "GROUP BY profile_id HAVING COUNT(*)>=? ORDER BY RANDOM() LIMIT 1",
+                    (topic, count)).fetchone()
+                if row:
+                    pid = row["profile_id"]
+            else:
+                row = conn.execute(
+                    "SELECT topic, profile_id FROM generation "
+                    "WHERE topic<>'' AND profile_id<>'' "
+                    "GROUP BY topic, profile_id HAVING COUNT(*)>=? ORDER BY RANDOM() LIMIT 1",
+                    (count,)).fetchone()
+                if row:
+                    topic, pid = row["topic"], row["profile_id"]
         if not topic:
             row = conn.execute(
                 "SELECT topic FROM generation WHERE topic<>'' "
                 "GROUP BY topic HAVING COUNT(*)>=? ORDER BY RANDOM() LIMIT 1",
                 (count,)).fetchone()
             topic = row["topic"] if row else None
-        if topic:
+        if topic and pid:
+            cur = conn.execute(
+                "SELECT id,title,markdown,word_count,topic FROM generation "
+                "WHERE topic=? AND profile_id=? ORDER BY RANDOM() LIMIT ?",
+                (topic, pid, count))
+            used = "same"
+        elif topic:
             cur = conn.execute(
                 "SELECT id,title,markdown,word_count,topic FROM generation "
                 "WHERE topic=? ORDER BY RANDOM() LIMIT ?", (topic, count))
+            used = "any"
         else:
             cur = conn.execute(
                 "SELECT id,title,markdown,word_count,topic FROM generation "
                 "ORDER BY RANDOM() LIMIT ?", (count,))
-        return rows_to_list(cur)
+            used = "none"
+        return {"items": rows_to_list(cur), "mode": used}
     finally:
         conn.close()
 

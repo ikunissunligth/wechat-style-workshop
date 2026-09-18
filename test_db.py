@@ -173,14 +173,31 @@ g2 = db.add_generation({"profileId": "2", "profileName": "差评风", "topic": "
                         "model": "deepseek", "markdown": "# 二\n\n正文乙", "wordCount": 3})
 g3 = db.add_generation({"profileId": "1", "profileName": "小米风", "topic": "汽车",
                         "model": "qwen-plus", "markdown": "# 三\n\n正文丙", "wordCount": 3})
-pair = db.eval_next(2)
+# 同一档案在同一主题下再写一篇：只有这样才能凑出「同档案对照」
+g4 = db.add_generation({"profileId": "1", "profileName": "小米风", "topic": "手机",
+                        "model": "qwen-plus", "markdown": "# 四\n\n正文丁", "wordCount": 3})
+pair = db.eval_next(2)["items"]
 check("抽到两篇", len(pair), 2)
 ok("抽到的同主题", len({x["topic"] for x in pair}) == 1)
 for f in ("profile_name", "profile_id", "model"):
     ok("不下发来源字段 %s（否则不是盲评）" % f, all(f not in x for x in pair))
 ok("带正文供评委阅读", all(x.get("markdown") for x in pair))
-check("指定主题抽题", len(db.eval_next(2, topic="汽车")), 1)
-check("不足两篇时如实返回", len(db.eval_next(2, topic="不存在的主题")), 0)
+check("指定主题抽题", len(db.eval_next(2, topic="汽车")["items"]), 1)
+check("不足两篇时如实返回", len(db.eval_next(2, topic="不存在的主题")["items"]), 0)
+# mode=same（默认）：只有目标风格一致，A/B 偏好才有对照意义
+same = db.eval_next(2)
+# 关键：同档案对照抽到的必须是同档案的两篇，不能混进另外档案的稿子，
+# 否则 A/B 比的是两种风格而不是两种设置，实验结论就错了
+got = sorted(x["markdown"].strip()[-1] for x in same["items"])
+check("同档案对照不混入其它档案", got, ["丁", "甲"])
+check("同档案对照口径为 same", same["mode"], "same")
+ok("同档案对照确实同主题", len({x["topic"] for x in same["items"]}) == 1)
+# 主题只有一篇时，same 找不到同档案配对，必须如实退化并告知，不能假装是对照
+solo = db.eval_next(2, topic="汽车")
+check("同档装配不齐时退化", solo["mode"], "any")
+check("退化后仍返回可得的篇数", len(solo["items"]), 1)
+# mode=any：同主题即可，用于横向比不同风格
+check("any 模式不要求同档案", db.eval_next(2, mode="any")["mode"], "any")
 
 print("== 盲评记录与联表导出 ==")
 db.add_evaluation({"generationId": g1, "judge": "评审A", "scoreStyle": 5,
@@ -195,7 +212,7 @@ for gid, v in ((g1, 7.0), (g2, 2.0)):
                          {"name": "sentLenCv", "value": 0.5, "target": 0}])
 rows = db.eval_export()
 by_id = {r["id"]: r for r in rows}
-check("导出覆盖全部生成稿", len(rows), 3)
+check("导出覆盖全部生成稿", len(rows), 4)
 check("评委数没被指标行数放大", by_id[g1]["judge_count"], 2)
 check("风格分取均值", by_id[g1]["avg_style"], 4.0)
 check("被偏好次数", by_id[g1]["preferred_count"], 1)

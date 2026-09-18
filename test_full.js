@@ -129,8 +129,11 @@ async function api(p, opt) {
   const nxt = await api('/api/evaluations/next?count=2&topic=' + encodeURIComponent(etopic));
   const nit = (nxt.body && nxt.body.items) || [];
   ok('抽题接口', nxt.status === 200 && nit.length === 2);
+  ok('同档案对照口径为 same（A/B 比的是设置不是风格）', nxt.body && nxt.body.mode === 'same');
   ok('抽题不含风格名（服务端匿名）', nit.every(x => x.profile_name === undefined && x.model === undefined));
   ok('抽题带正文', nit.every(x => !!x.markdown));
+  const nxtAny = await api('/api/evaluations/next?count=2&mode=any&topic=' + encodeURIComponent(etopic));
+  ok('any 模式可用', nxtAny.status === 200 && nxtAny.body.mode === 'any');
   if (nit.length === 2) {
     let posted = 0;
     for (let i = 0; i < 2; i++) {

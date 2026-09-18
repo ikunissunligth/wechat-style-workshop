@@ -549,7 +549,7 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
 <section class="page" id="page-eval">
   <div class="card">
     <h2>盲评实验</h2>
-    <p class="muted">从库里随机抽两篇<b>同主题</b>的生成稿并排展示，<b>风格名与模型由服务端隐去</b>，评委看不到来源。每篇打三个 1–5 分，再选更喜欢的一篇。结果写进 <code>evaluation</code> 表，和客观指标联表后可直接导出成论文用的对比表。</p>
+    <p class="muted">从库里随机抽两篇<b>同主题</b>的生成稿并排展示，<b>风格名与模型由服务端隐去</b>，评委看不到来源。每篇打三个 1–5 分（<b>5 最好，1 最差</b>，每个维度下面写了 5/3/1 分别长什么样，照着打就行），再选更喜欢的一篇。结果写进 <code>evaluation</code> 表，和客观指标联表后可直接导出成论文用的对比表。</p>
     <div id="evalNeedDb" class="note" style="display:none">当前是 file:// 直开模式，没有本地服务，读不到库里的生成稿。双击 start.bat 启动后即可盲评。</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
       <div style="flex:0 0 180px">
@@ -558,6 +558,10 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
       </div>
       <button class="btn primary" id="btnEvalDraw" type="button">抽题</button>
       <button class="btn" id="btnEvalReveal" type="button" disabled>揭盲</button>
+      <label style="display:flex;gap:6px;align-items:center;flex:0 0 auto">
+        <input type="checkbox" id="evalSameMode" checked style="width:auto">
+        两篇必须同档案（比的是生成设置，不是两种风格）
+      </label>
       <button class="btn" id="btnEvalSummary" type="button">刷新汇总</button>
       <button class="btn" id="btnEvalExport" type="button">导出 CSV</button>
       <span class="muted" id="evalStatus"></span>
@@ -3593,7 +3597,13 @@ $('scrim').onclick=function(){setDrawer(false)};
       前端拿不到来源，想看只能显式点「揭盲」，那一步是评委自己选择拆盲；
    ② 不许半交——A/B 两篇都得打完分、且必须选出更喜欢的一篇才让提交，
       否则 preferred 就失去对照意义，数据进库也是废的。 */
-var EVAL_DIMS=[['style','像不像目标风格'],['read','读着顺不顺'],['fact','事实靠不靠谱']];
+/* 三维度必须带行为锚点：李克特 5 点量表如果只给「像不像」，每个评委心里的
+   3 分都不一样，收回来的分是噪声而不是数据。锚点写死在界面上，评委不用翻文档。 */
+var EVAL_DIMS=[
+  ['style','像不像目标风格','5 一眼能认出是这个号写的｜3 语气接近但句式不像｜1 换谁写都一样'],
+  ['read','读着顺不顺','5 一口气读完不卡｜3 个别句子要回读｜1 拗口或明显的机器腔'],
+  ['fact','事实靠不靠谱','5 没有无来源的数字和断言｜3 个别说法存疑｜1 出现编造的数据或引用']
+];
 var evalState={items:[],scores:{},preferred:null,revealed:false};
 function evalLetter(i){return 'AB'.charAt(i)||String(i+1)}
 function evalJudgeName(){return ($('evalJudge').value||'').trim()||'匿名评委'}
@@ -3615,6 +3625,7 @@ function evalRenderPair(){
     EVAL_DIMS.forEach(function(d){
       var cur=(evalState.scores[it.id]||{})[d[0]];
       h+='<div style="margin-top:10px"><div class="muted">'+d[1]+'</div>'
+        +'<div class="muted" style="font-size:12px;opacity:.8">'+d[2]+'</div>'
         +'<div style="display:flex;gap:6px;margin-top:4px">';
       for(var s=1;s<=5;s++){
         h+='<button type="button" class="btn sm evalscore" data-id="'+it.id+'" data-dim="'+d[0]
@@ -3653,8 +3664,10 @@ function evalDraw(){
   if(!dbEnabled()){toast('盲评要读库里的生成稿，请先双击 start.bat 启动');return}
   $('evalStatus').textContent='抽题中…';
   evalState={items:[],scores:{},preferred:null,revealed:false};
-  apiGet('/api/evaluations/next?count=2').then(function(d){
+  var mode=$('evalSameMode')&&$('evalSameMode').checked?'same':'any';
+  apiGet('/api/evaluations/next?count=2&mode='+mode).then(function(d){
     var items=(d&&d.items)||[];
+    var used=(d&&d.mode)||'none';
     if(items.length<2){
       $('evalPairCard').style.display='none';
       $('evalStatus').textContent=items.length
@@ -3667,7 +3680,10 @@ function evalDraw(){
     $('evalPairCard').style.display='';
     $('btnEvalReveal').disabled=false;
     $('evalSubmitHint').textContent='';
-    $('evalStatus').textContent='主题：'+(items[0].topic||'（无主题）')+' · 来源已隐去';
+    var note=used==='same'?'同档案对照：差异只来自生成设置，偏好可比'
+      :used==='any'?'同主题但档案不同：这组分数的差异里有风格差异，别当成设置对照'
+      :'库里凑不出同主题配对，这组分数的差异来源不明，建议只当参考';
+    $('evalStatus').textContent='主题：'+(items[0].topic||'（无主题）')+' · '+note+' · 来源已隐去';
     evalRenderPair();
   }).catch(function(e){$('evalStatus').textContent='抽题失败：'+(e.message||e)});
 }

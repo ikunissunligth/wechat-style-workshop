@@ -539,11 +539,12 @@ function finish() {
   const EVAL_A = { id: 11, title: '甲稿', topic: '手机', word_count: 820, markdown: '# 甲稿\n\n正文甲的内容' };
   const EVAL_B = { id: 12, title: '乙稿', topic: '手机', word_count: 790, markdown: '# 乙稿\n\n正文乙的内容' };
   let evalPosts = [];
+  let evalMode = 'same';
   const evalReply = (o) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(o) });
   w.fetch = function (url, opt) {
     const p = String(url).split('?')[0];
     const method = (opt && opt.method) || 'GET';
-    if (p === '/api/evaluations/next') return evalReply({ items: [EVAL_A, EVAL_B] });
+    if (p === '/api/evaluations/next') return evalReply({ items: [EVAL_A, EVAL_B], mode: evalMode });
     if (p === '/api/evaluations' && method === 'POST') { evalPosts.push(JSON.parse(opt.body)); return evalReply({ id: evalPosts.length }); }
     if (p === '/api/evaluations/summary') return evalReply({ items: [
       { generation_id: 11, title: '甲稿', profile_name: '小米风', model: 'qwen-plus', judge_count: 2, avg_style: 4.5, avg_read: 4, avg_fact: 5, preferred_count: 2 },
@@ -571,6 +572,27 @@ function finish() {
     check('盲评-不透露模型', pairBox.textContent.indexOf('qwen-plus'), -1);
     check('盲评-标为A/B两稿', pairBox.textContent.indexOf('稿 A') >= 0 && pairBox.textContent.indexOf('稿 B') >= 0, true);
     check('盲评-默认未揭盲', w.evalState.revealed, false);
+    check('盲评-每个维度都有行为锚点', w.EVAL_DIMS.every((d) => d[2] && d[2].indexOf('5 ') >= 0 && d[2].indexOf('3 ') >= 0 && d[2].indexOf('1 ') >= 0), true);
+    check('盲评-锚点渲染到界面', pairBox.textContent.indexOf('换谁写都一样') >= 0, true);
+    check('盲评-默认要求同档案对照', w.document.getElementById('evalSameMode').checked, true);
+    check('盲评-同档案时说明差异来源', w.document.getElementById('evalStatus').textContent.indexOf('差异只来自生成设置') >= 0, true);
+    /* 关掉同档案限制：必须明确警告这组分数的差异里混了风格差异 */
+    evalMode = 'any';
+    w.document.getElementById('evalSameMode').checked = false;
+    w.evalDraw();
+    setTimeout(() => {
+      check('盲评-退化时如实告知不可当设置对照',
+        w.document.getElementById('evalStatus').textContent.indexOf('别当成设置对照') >= 0, true);
+      evalMode = 'same';
+      w.document.getElementById('evalSameMode').checked = true;
+      w.evalDraw();
+      setTimeout(() => {
+        runEvalGates();
+      }, 30);
+    }, 30);
+  }, 30);
+
+  function runEvalGates() {
     /* 门槛一：三维度没打完不许提交 */
     clickScore(11, 'style', 5);
     w.document.getElementById('btnEvalSubmit').click();
@@ -627,5 +649,5 @@ function finish() {
         }, 30);
       }, 30);
     }, 30);
-  }, 30);
+  }
 }
