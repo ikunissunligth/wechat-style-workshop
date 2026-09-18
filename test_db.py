@@ -159,11 +159,61 @@ check("有索引的建了文章", db.stats()["article"], 1)
 check("无索引的也建了组", db.stats()["group"], 2)
 check("扫目录补进图片", db.stats()["image"], 1)
 
+print("== 盲评抽题（服务端匿名）==")
+tmp3 = tempfile.mkdtemp(prefix="wxweval_")
+db.DATA_DIR = tmp3
+db.DB_PATH = os.path.join(tmp3, "e.db")
+db.ARTICLES_DIR = tmp3
+db.init_db()
+db.save_profile({"id": "1", "name": "小米风"})
+db.save_profile({"id": "2", "name": "差评风"})
+g1 = db.add_generation({"profileId": "1", "profileName": "小米风", "topic": "手机",
+                        "model": "qwen-plus", "markdown": "# 一\n\n正文甲", "wordCount": 3})
+g2 = db.add_generation({"profileId": "2", "profileName": "差评风", "topic": "手机",
+                        "model": "deepseek", "markdown": "# 二\n\n正文乙", "wordCount": 3})
+g3 = db.add_generation({"profileId": "1", "profileName": "小米风", "topic": "汽车",
+                        "model": "qwen-plus", "markdown": "# 三\n\n正文丙", "wordCount": 3})
+pair = db.eval_next(2)
+check("抽到两篇", len(pair), 2)
+ok("抽到的同主题", len({x["topic"] for x in pair}) == 1)
+for f in ("profile_name", "profile_id", "model"):
+    ok("不下发来源字段 %s（否则不是盲评）" % f, all(f not in x for x in pair))
+ok("带正文供评委阅读", all(x.get("markdown") for x in pair))
+check("指定主题抽题", len(db.eval_next(2, topic="汽车")), 1)
+check("不足两篇时如实返回", len(db.eval_next(2, topic="不存在的主题")), 0)
+
+print("== 盲评记录与联表导出 ==")
+db.add_evaluation({"generationId": g1, "judge": "评审A", "scoreStyle": 5,
+                   "scoreRead": 4, "scoreFact": 5, "preferred": True})
+db.add_evaluation({"generationId": g1, "judge": "评审B", "scoreStyle": 3,
+                   "scoreRead": 4, "scoreFact": 3, "preferred": False})
+db.add_evaluation({"generationId": g2, "judge": "评审A", "scoreStyle": 4,
+                   "scoreRead": 5, "scoreFact": 4, "preferred": False})
+# 三篇指标一起塞：若联表把行数放大，judge_count 会变成 3 的倍数而不是 2
+for gid, v in ((g1, 7.0), (g2, 2.0)):
+    db.add_metrics(gid, [{"name": "aiFlavor", "value": v, "target": 0},
+                         {"name": "sentLenCv", "value": 0.5, "target": 0}])
+rows = db.eval_export()
+by_id = {r["id"]: r for r in rows}
+check("导出覆盖全部生成稿", len(rows), 3)
+check("评委数没被指标行数放大", by_id[g1]["judge_count"], 2)
+check("风格分取均值", by_id[g1]["avg_style"], 4.0)
+check("被偏好次数", by_id[g1]["preferred_count"], 1)
+check("客观指标行转列", by_id[g1]["ai_flavor"], 7.0)
+check("没被评的稿评委数为 0", by_id[g3]["judge_count"], 0)
+check("没指标的稿留空", by_id[g3]["ai_flavor"], None)
+check("汇总接口可用", len(db.eval_summary()), 2)
+# 删稿必须连带清掉指标与盲评，否则留下孤儿评分（evaluation 是 SET NULL 不是 CASCADE）
+db.delete_generation(g1)
+check("删稿后指标清空", len(db.list_metrics(g1)), 0)
+ok("删稿后不留孤儿评分", all(e["generation_id"] is not None for e in db.list_evaluations()))
+check("删稿后汇总只剩另一篇", len(db.eval_summary()), 1)
+
 print("== 统计 ==")
 st = db.stats()
 ok("统计含 11 张表", len(st) == 11)
 
-for d in (tmp, tmp2):
+for d in (tmp, tmp2, tmp3):
     shutil.rmtree(d, ignore_errors=True)
 
 print("== 结果 ==")

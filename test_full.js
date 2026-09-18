@@ -110,6 +110,54 @@ async function api(p, opt) {
   const dp = await api('/api/profiles/' + tpid, { method: 'DELETE', headers: H, body: '{}' });
   ok('删档案', dp.status === 200 && dp.body.ok === true);
 
+  console.log('\n=== A3. 盲评全链路（真接口，造数→抽题→打分→汇总→导出→清理）===');
+  const etp = 'p_evaltest_' + Date.now();
+  await api('/api/profiles', { method: 'POST', headers: H, body: JSON.stringify({
+    profile: { id: etp, name: '__盲评自检档案__', tone: '口语', css: { fontSize: 15 },
+      paragraphs: { avgLen: 55 }, rhythm: { avg: 4 }, topic: { total: 3 },
+      argument: { total: 3 }, stance: { judges: ['x'] }, images: { total: 9 } } }) });
+  const etopic = '__盲评自检主题_' + Date.now() + '__';
+  const egids = [];
+  for (let i = 0; i < 2; i++) {
+    const g = await api('/api/generations', { method: 'POST', headers: H, body: JSON.stringify({
+      profileId: etp, profileName: '__盲评自检档案__', topic: etopic, model: 'selftest',
+      markdown: '# 自检稿' + i + '\n\n正文内容' + i, wordCount: 100 + i,
+      metrics: [{ name: 'aiFlavor', value: 5 - i, target: 0 }] }) });
+    if (g.body && g.body.id) egids.push(g.body.id);
+  }
+  ok('造两篇同主题稿', egids.length === 2, egids.join(' / '));
+  const nxt = await api('/api/evaluations/next?count=2&topic=' + encodeURIComponent(etopic));
+  const nit = (nxt.body && nxt.body.items) || [];
+  ok('抽题接口', nxt.status === 200 && nit.length === 2);
+  ok('抽题不含风格名（服务端匿名）', nit.every(x => x.profile_name === undefined && x.model === undefined));
+  ok('抽题带正文', nit.every(x => !!x.markdown));
+  if (nit.length === 2) {
+    let posted = 0;
+    for (let i = 0; i < 2; i++) {
+      const r = await api('/api/evaluations', { method: 'POST', headers: H, body: JSON.stringify({
+        generationId: nit[i].id, judge: '__自检评委__', scoreStyle: 5 - i,
+        scoreRead: 4, scoreFact: 5, preferred: i === 0 }) });
+      if (r.status === 200 && r.body.id) posted++;
+    }
+    ok('两条评分入库', posted === 2);
+    const exp0 = await api('/api/evaluations/export');
+    const rows = (exp0.body && exp0.body.items) || [];
+    const mine = rows.filter(x => x.topic === etopic);
+    ok('导出含本次两篇', mine.length === 2, mine.length + ' 行');
+    ok('导出带主观分', mine.every(x => x.avg_style !== undefined && x.judge_count === 1));
+    ok('导出带客观指标（行转列后没被放大）',
+       mine.some(x => x.ai_flavor !== undefined && x.ai_flavor !== null),
+       'aiFlavor=' + (mine.find(x => x.ai_flavor !== null) || {}).ai_flavor);
+    ok('偏好只记一次', mine.reduce((a, b) => a + (b.preferred_count || 0), 0) === 1);
+  }
+  for (const gid of egids) {
+    await api('/api/generations/' + gid, { method: 'DELETE', headers: H, body: '{}' });
+  }
+  const after = await api('/api/evaluations/export');
+  ok('删稿后不留孤儿评分',
+     !((after.body && after.body.items) || []).some(x => x.topic === etopic));
+  await api('/api/profiles/' + etp, { method: 'DELETE', headers: H, body: '{}' });
+
   console.log('\n=== B. 前端运行时（jsdom，捕获所有错误）===');
   const appHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const errors = [];

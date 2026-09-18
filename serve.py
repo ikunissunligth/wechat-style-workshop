@@ -663,9 +663,13 @@ class Handler(SimpleHTTPRequestHandler):
             if m and method == "POST":
                 return 200, {"count": db.add_metrics(int(m.group(1)), body.get("metrics") or [])}
             m = re.match(r"^/api/generations/(\d+)$", p)
-            if m and method == "GET":
-                item = db.get_generation(int(m.group(1)))
-                return (200, {"item": item}) if item else (404, {"error": "记录不存在"})
+            if m:
+                if method == "GET":
+                    item = db.get_generation(int(m.group(1)))
+                    return (200, {"item": item}) if item else (404, {"error": "记录不存在"})
+                if method == "DELETE":
+                    # 连带清掉指标与盲评，否则留下孤儿评分污染汇总
+                    return 200, {"ok": db.delete_generation(int(m.group(1)))}
             # 指标（实验数据）
             if p == "/api/metrics" and method == "GET":
                 return 200, {"items": db.list_metrics()}
@@ -676,6 +680,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return 200, {"id": db.add_evaluation(body)}
             if p == "/api/evaluations/summary" and method == "GET":
                 return 200, {"items": db.eval_summary()}
+            # 盲评抽题（服务端匿名：不下发风格名与模型）与联表导出
+            if p == "/api/evaluations/next" and method == "GET":
+                return 200, {"items": db.eval_next(
+                    int((q.get("count") or ["2"])[0]),
+                    (q.get("topic") or [None])[0])}
+            if p == "/api/evaluations/export" and method == "GET":
+                return 200, {"items": db.eval_export()}
             # 抓取日志
             if p == "/api/fetch_logs" and method == "GET":
                 return 200, {"items": db.list_fetch_logs(int((q.get("limit") or ["100"])[0]))}

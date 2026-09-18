@@ -483,6 +483,24 @@ def get_generation(gid):
         conn.close()
 
 
+def delete_generation(gid):
+    """删一条生成稿。指标与盲评必须显式先删：
+
+    generation_metric 是 ON DELETE CASCADE 会自动清，但 evaluation 是
+    ON DELETE SET NULL——不先删就会留下 generation_id 为空的孤儿评分，
+    汇总表会多出一行来源不明的记录，实验数据就脏了。
+    """
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("DELETE FROM generation_metric WHERE generation_id=?", (gid,))
+            conn.execute("DELETE FROM evaluation WHERE generation_id=?", (gid,))
+            cur = conn.execute("DELETE FROM generation WHERE id=?", (gid,))
+            return cur.rowcount
+    finally:
+        conn.close()
+
+
 def add_metrics(generation_id, metrics):
     """metrics: [{name, value, target}]——生成稿的量化指标，实验评估的数据源。"""
     conn = connect()
@@ -537,6 +555,64 @@ def list_evaluations(generation_id=None):
                 "SELECT * FROM evaluation WHERE generation_id=? ORDER BY created_at DESC",
                 (generation_id,)))
         return rows_to_list(conn.execute("SELECT * FROM evaluation ORDER BY created_at DESC LIMIT 200"))
+    finally:
+        conn.close()
+
+
+def eval_next(count=2, topic=None):
+    """盲评抽题：随机取 count 篇生成稿，**只下发正文相关字段**。
+
+    profile_id / profile_name / model 一律不下发——评委在客户端看不到来源，
+    才算盲评；想作弊得另外发请求去查，那是自己拆自己的实验。
+    同主题优先（A/B 才有可比性）；凑不齐就退化为全库随机。
+    """
+    count = max(1, min(int(count or 2), 5))
+    conn = connect()
+    try:
+        if not topic:
+            row = conn.execute(
+                "SELECT topic FROM generation WHERE topic<>'' "
+                "GROUP BY topic HAVING COUNT(*)>=? ORDER BY RANDOM() LIMIT 1",
+                (count,)).fetchone()
+            topic = row["topic"] if row else None
+        if topic:
+            cur = conn.execute(
+                "SELECT id,title,markdown,word_count,topic FROM generation "
+                "WHERE topic=? ORDER BY RANDOM() LIMIT ?", (topic, count))
+        else:
+            cur = conn.execute(
+                "SELECT id,title,markdown,word_count,topic FROM generation "
+                "ORDER BY RANDOM() LIMIT ?", (count,))
+        return rows_to_list(cur)
+    finally:
+        conn.close()
+
+
+def eval_export():
+    """主观盲评 × 客观指标联表——论文里的对比表直接取这个。
+
+    指标用「行转列」子查询再 join：直接 join generation_metric 会让每个指标
+    变成一行，COUNT(e.id) 和 AVG 会被放大成倍数，数就废了。
+    """
+    conn = connect()
+    try:
+        return rows_to_list(conn.execute(
+            "SELECT g.id, g.title, g.profile_name, g.model, g.topic, g.word_count,"
+            " COUNT(e.id) judge_count,"
+            " ROUND(AVG(e.score_style),2) avg_style,"
+            " ROUND(AVG(e.score_read),2) avg_read,"
+            " ROUND(AVG(e.score_fact),2) avg_fact,"
+            " COALESCE(SUM(e.preferred),0) preferred_count,"
+            " m.ai_flavor, m.ai_flavor_per1k, m.sent_len_cv, m.avg_para_len"
+            " FROM generation g"
+            " LEFT JOIN evaluation e ON e.generation_id=g.id"
+            " LEFT JOIN (SELECT generation_id,"
+            "   MAX(CASE WHEN metric_name='aiFlavor' THEN metric_value END) ai_flavor,"
+            "   MAX(CASE WHEN metric_name='aiFlavorPer1k' THEN metric_value END) ai_flavor_per1k,"
+            "   MAX(CASE WHEN metric_name='sentLenCv' THEN metric_value END) sent_len_cv,"
+            "   MAX(CASE WHEN metric_name='avgParaLen' THEN metric_value END) avg_para_len"
+            "   FROM generation_metric GROUP BY generation_id) m ON m.generation_id=g.id"
+            " GROUP BY g.id ORDER BY judge_count DESC, avg_style DESC"))
     finally:
         conn.close()
 

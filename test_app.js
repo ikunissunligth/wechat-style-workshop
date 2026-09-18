@@ -535,7 +535,97 @@ function finish() {
   check('AI味-面板项可点击定位', cp2.querySelectorAll('.chk-hit').length > 0, true);
   check('AI味-面板给出改法与保留判据', cp2.textContent.indexOf('什么时候别改') >= 0, true);
 
-  console.log('== 结果 ==');
-  console.log(`PASS ${pass}, FAIL ${fail}`);
-  process.exit(fail ? 1 : 0);
+  console.log('== 22) 盲评实验（主观分 × 客观指标）==');
+  const EVAL_A = { id: 11, title: '甲稿', topic: '手机', word_count: 820, markdown: '# 甲稿\n\n正文甲的内容' };
+  const EVAL_B = { id: 12, title: '乙稿', topic: '手机', word_count: 790, markdown: '# 乙稿\n\n正文乙的内容' };
+  let evalPosts = [];
+  const evalReply = (o) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(o) });
+  w.fetch = function (url, opt) {
+    const p = String(url).split('?')[0];
+    const method = (opt && opt.method) || 'GET';
+    if (p === '/api/evaluations/next') return evalReply({ items: [EVAL_A, EVAL_B] });
+    if (p === '/api/evaluations' && method === 'POST') { evalPosts.push(JSON.parse(opt.body)); return evalReply({ id: evalPosts.length }); }
+    if (p === '/api/evaluations/summary') return evalReply({ items: [
+      { generation_id: 11, title: '甲稿', profile_name: '小米风', model: 'qwen-plus', judge_count: 2, avg_style: 4.5, avg_read: 4, avg_fact: 5, preferred_count: 2 },
+      { generation_id: 12, title: '乙稿', profile_name: '差评风', model: 'deepseek', judge_count: 1, avg_style: 3, avg_read: 4, avg_fact: 4, preferred_count: 0 }] });
+    if (p === '/api/evaluations/export') return evalReply({ items: [
+      { id: 11, title: '甲稿', profile_name: '小米风', model: 'qwen-plus', topic: '手机', word_count: 820,
+        judge_count: 2, avg_style: 4.5, avg_read: 4, avg_fact: 5, preferred_count: 2,
+        ai_flavor: 3, ai_flavor_per1k: 3.6, sent_len_cv: 0.51, avg_para_len: 48 }] });
+    if (p === '/api/generations/11') return evalReply({ item: { id: 11, profile_name: '小米风', model: 'qwen-plus' } });
+    if (p === '/api/generations/12') return evalReply({ item: { id: 12, profile_name: '差评风', model: 'deepseek' } });
+    return Promise.reject(new Error('unexpected ' + p));
+  };
+  const pairBox = w.document.getElementById('evalPair');
+  const evalHint = w.document.getElementById('evalSubmitHint');
+  const clickScore = (id, dim, score) => {
+    const b = pairBox.querySelector('.evalscore[data-id="' + id + '"][data-dim="' + dim + '"][data-score="' + score + '"]');
+    if (!b) throw new Error('missing score button ' + id + '/' + dim + '/' + score);
+    b.click();
+  };
+  w.evalDraw();
+  setTimeout(() => {
+    check('盲评-抽题后并排两栏', pairBox.querySelectorAll('.chk-item').length, 2);
+    check('盲评-展示正文', pairBox.textContent.indexOf('正文甲的内容') >= 0, true);
+    check('盲评-不透露风格名', pairBox.textContent.indexOf('小米风'), -1);
+    check('盲评-不透露模型', pairBox.textContent.indexOf('qwen-plus'), -1);
+    check('盲评-标为A/B两稿', pairBox.textContent.indexOf('稿 A') >= 0 && pairBox.textContent.indexOf('稿 B') >= 0, true);
+    check('盲评-默认未揭盲', w.evalState.revealed, false);
+    /* 门槛一：三维度没打完不许提交 */
+    clickScore(11, 'style', 5);
+    w.document.getElementById('btnEvalSubmit').click();
+    check('盲评-打分不全则拒绝提交', evalPosts.length, 0);
+    check('盲评-拒绝时说清缺什么', evalHint.textContent.indexOf('还没打完') >= 0, true);
+    /* 门槛二：打完了但没选偏好，同样不许提交（A/B 对照缺了就废） */
+    ['style', 'read', 'fact'].forEach((d) => clickScore(11, d, 5));
+    ['style', 'read', 'fact'].forEach((d) => clickScore(12, d, 3));
+    check('盲评-两篇独立记分', w.evalState.scores[12].style, 3);
+    w.document.getElementById('btnEvalSubmit').click();
+    check('盲评-未选偏好则拒绝提交', evalPosts.length, 0);
+    check('盲评-拒绝时说明偏好是核心', evalHint.textContent.indexOf('更喜欢的') >= 0, true);
+    /* 补齐后提交 */
+    pairBox.querySelector('input[name=evalPref][value="11"]').click();
+    check('盲评-偏好被记录', w.evalState.preferred, 11);
+    w.document.getElementById('btnEvalSubmit').click();
+    setTimeout(() => {
+      check('盲评-提交写入两条', evalPosts.length, 2);
+      check('盲评-评委名落库', evalPosts.every((x) => x.judge === '匿名评委'), true);
+      check('盲评-只有一篇被标偏好', evalPosts.filter((x) => x.preferred).length, 1);
+      check('盲评-被偏好的是选中那篇', evalPosts.find((x) => x.preferred).generationId, 11);
+      check('盲评-三维度都进库', evalPosts.every((x) => x.scoreStyle && x.scoreRead && x.scoreFact), true);
+      check('盲评-提交后清空避免重复评', w.evalState.items.length, 0);
+      /* 汇总 + 揭盲 + 导出 */
+      w.evalLoadSummary();
+      setTimeout(() => {
+        const sum = w.document.getElementById('evalSummary');
+        check('盲评-汇总表渲染', sum.querySelectorAll('tr').length, 3);
+        check('盲评-样本不足给提示', sum.textContent.indexOf('仅参考') >= 0, true);
+        check('盲评-汇总显示风格与模型', sum.textContent.indexOf('小米风') >= 0, true);
+        w.evalState = { items: [EVAL_A, EVAL_B], scores: {}, preferred: null, revealed: false };
+        w.evalReveal();
+        setTimeout(() => {
+          check('盲评-揭盲后显示来源', pairBox.textContent.indexOf('小米风 / qwen-plus') >= 0, true);
+          let csv = null;
+          w.Blob = function (parts) { csv = parts.join(''); };
+          w.URL.createObjectURL = () => 'blob:csv';
+          const origCreate = w.document.createElement.bind(w.document);
+          w.document.createElement = function (tag) {
+            const el = origCreate(tag);
+            if (tag === 'a') el.click = function () { this._clicked = true; };
+            return el;
+          };
+          w.evalExportCsv();
+          setTimeout(() => {
+            check('盲评-CSV已生成', !!csv, true);
+            check('盲评-CSV带BOM(Excel不乱码)', csv.indexOf('\ufeff'), 0);
+            check('盲评-CSV表头含主观与客观', csv.indexOf('avg_style') >= 0 && csv.indexOf('ai_flavor') >= 0, true);
+            check('盲评-CSV两行(表头+数据)', csv.trim().split('\r\n').length, 2);
+            console.log('== 结果 ==');
+            console.log(`PASS ${pass}, FAIL ${fail}`);
+            process.exit(fail ? 1 : 0);
+          }, 30);
+        }, 30);
+      }, 30);
+    }, 30);
+  }, 30);
 }
