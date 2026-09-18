@@ -197,7 +197,27 @@ setTimeout(() => {
   w.deAiPolish(draft).then(v => { r6 = v; });
   setTimeout(() => {
     check('润色-剥引导语并补回标题#', r6 !== null && /^# 标题/.test(r6) && r6.indexOf('以下是') === -1 && r6.indexOf('[图：配图]') >= 0, true);
-    finish();
+    /* (7)(8) 第四重校验：AI 味降下来才采纳，降不下来（哪怕字数/标记/标题都对）也要退回原稿 */
+    const aiDraft = '# 标题\n\n随着人工智能技术的快速发展，值得注意的是，这一点至关重要，而且不容忽视。\n\n[图：配图]\n\n其次，不难发现，其意义重大，这一点尤为关键。';
+    const aiBase = w.detectAiFlavor(aiDraft).score;
+    check('润色-含AI味的稿子基线为正', aiBase > 0, true);
+    const aiCleaned = '# 标题\n\n我到楼下才想起来钥匙还在桌上。站了两秒，又觉得有点好笑，这周已经是第二次了。\n\n[图：配图]\n\n钥匙串在包里叮当响了一路。算了，回来再配一把吧，反正也不贵。';
+    let r7 = null;
+    nextReply = aiCleaned;
+    w.deAiPolish(aiDraft).then(v => { r7 = v; });
+    setTimeout(() => {
+      check('润色-AI味下降则采纳改写', r7 !== null && r7.indexOf('钥匙还在桌上') >= 0, true);
+      check('润色-采纳后残留确实更低', w.detectAiFlavor(r7 || '').score < aiBase, true);
+      const aiWorse = '# 标题\n\n随着技术的快速迭代，在数字化转型的浪潮下，值得注意的是，进行全面解析与深度剖析，赋能业务闭环。\n\n[图：配图]\n\n其次，不容忽视的是，它实现了降维打击，完成了认知升级，这一点至关重要。';
+      check('润色-反例本身AI味更高', w.detectAiFlavor(aiWorse).score > aiBase, true);
+      let r8 = null;
+      nextReply = aiWorse;
+      w.deAiPolish(aiDraft).then(v => { r8 = v; });
+      setTimeout(() => {
+        check('润色-AI味未下降则回退原稿', r8 === aiDraft, true);
+        finish();
+      }, 30);
+    }, 30);
   }, 30);
 }, 30);
       }, 30);
@@ -368,6 +388,152 @@ function finish() {
     w.renderProfileList();
     return w.document.getElementById('profileList').querySelectorAll('[data-exportone]').length >= 0;
   })(), true);
+
+  /* 15) 排版规范化（中英文间距 / 中文标点） */
+  console.log('== 本轮新增：排版规范化 / 发布前体检 / 标题摘要 / 深色预览 / 多格式导出 ==');
+  check('规范化-中英文加空格', w.typoText('这个iPhone很贵'), '这个 iPhone 很贵');
+  check('规范化-英文后接中文', w.typoText('我买了MacBook'), '我买了 MacBook');
+  check('规范化-数字与中文不动', w.typoText('9月16日发布'), '9月16日发布');
+  check('规范化-半角逗号转全角', w.typoText('你好,世界'), '你好，世界');
+  check('规范化-半角问号转全角', w.typoText('真的吗?是的'), '真的吗？是的');
+  check('规范化-半角冒号转全角', w.typoText('注意:这里'), '注意：这里');
+  check('规范化-省略号统一', w.typoText('等等...'), '等等……');
+  check('规范化-重复感叹收敛', w.typoText('太好了!!!'), '太好了！');
+  check('规范化-幂等', w.typoText(w.typoText('这个iPhone很贵')), '这个 iPhone 很贵');
+  const typoMd = w.typoMarkdown('# 标题iPhone\n\n```\ncode,here\n```\n\n[图：iPhone 15]\n\n正文iPhone不错');
+  check('规范化-跳过代码块', typoMd.md.indexOf('code,here') >= 0, true);
+  check('规范化-跳过槽位标记行', typoMd.md.indexOf('[图：iPhone 15]') >= 0, true);
+  check('规范化-正文生效', typoMd.md.indexOf('正文 iPhone 不错') >= 0, true);
+  check('规范化-变更计数', typoMd.changed >= 1, true);
+  /* 16) 发布前体检 */
+  const riskMd = '# 一个正常的标题\n\n' +
+    '这款手机是全网第一，销量冠军，绝对值得买。\n\n' +
+    '综上所述，这款产品非常好用，而且是行业第一。\n\n' +
+    '联系我微信:abcde12345 或者 13800138000。\n\n' +
+    '大家转发到朋友圈就能参与集赞活动。';
+  const r1 = w.scanRisk(riskMd);
+  check('体检-极限词命中', !!(r1.hits.ad && r1.hits.ad.length > 0), true);
+  check('体检-诱导分享判为阻断', r1.issues.some((x) => x.level === 'block' && x.title.indexOf('诱导') >= 0), true);
+  check('体检-手机号命中', r1.issues.some((x) => x.title.indexOf('手机号') >= 0), true);
+  /* AI 味不再由 scanRisk 的词表负责，改走 detectAiFlavor/scanAiFlavor 的十类模式族 */
+  check('体检-AI味命中', w.scanAiFlavor(riskMd).some((x) => x.title.indexOf('AI 味残留') >= 0), true);
+  check('体检-AI味不在风险词表里重复', r1.hits.ai, undefined);
+  check('体检-长数字串不误报手机号', w.scanRisk('编号13800138000123').issues.some((x) => x.title.indexOf('手机号') >= 0), false);
+  check('体检-标题不计入正文', w.scanRisk('# 全网第一的手机').hits.ad === undefined, true);
+  check('体检-代码块不计入', w.scanRisk('正文。\n\n```\n集赞\n```').issues.some((x) => x.level === 'block'), false);
+  const longTitleMd = '# ' + '这是一个非常非常非常长的标题用来测试手机端列表的截断效果到底有多严重' + '\n\n正文内容。';
+  check('体检-超长标题提醒', w.scanStructure(longTitleMd).some((x) => x.title.indexOf('过长') >= 0), true);
+  check('体检-无标题提醒', w.scanStructure('正文内容').some((x) => x.title.indexOf('没有标题') >= 0), true);
+  const sc = w.scoreOf([{ level: 'block' }, { level: 'warn' }, { level: 'info' }]);
+  check('体检-评分算法(100-12-5-2)', sc.score, 81);
+  check('体检-评级随分数变化', w.scoreOf([{ level: 'block' }, { level: 'block' }, { level: 'block' }, { level: 'block' }]).grade, '风险较高');
+  w.genState.profileId = '_default';
+  w.genState.md = riskMd;
+  w.renderGenResult();
+  w.runPublishCheck();
+  const cpanel = w.document.getElementById('checkPanel');
+  check('体检-面板渲染', cpanel.style.display !== 'none', true);
+  check('体检-显示分数', /^\d+$/.test(cpanel.querySelector('.chk-num').textContent), true);
+  check('体检-阻断项区块', cpanel.querySelectorAll('.chk-item.block').length > 0, true);
+  check('体检-命中词可点击定位', cpanel.querySelectorAll('.chk-hit').length > 0, true);
+  check('体检-一键修复按钮', cpanel.querySelectorAll('[data-fix]').length > 0, true);
+  check('体检-面板含免责说明', cpanel.textContent.indexOf('不能替代人工审核') >= 0, true);
+  /* 17) 标题 / 摘要工坊 */
+  const pd = w.parseTitleResult('{"titles":[{"title":"标题A","score":91,"why":"好"}],"digests":["摘要一"]}');
+  check('标题-解析JSON', pd.titles.length, 1);
+  check('标题-保留分数', pd.titles[0].score, 91);
+  check('标题-保留摘要', pd.digests[0], '摘要一');
+  const pd2 = w.parseTitleResult('```json\n{"titles":[{"title":"B","score":80,"why":""}],"digests":[]}\n```');
+  check('标题-解析带代码围栏', pd2.titles[0].title, 'B');
+  const pd3 = w.parseTitleResult('1. 第一个标题 88分\n2. 第二个标题 76分');
+  check('标题-兜底行解析', pd3.titles.length, 2);
+  check('标题-兜底取分数', pd3.titles[0].score, 88);
+  check('标题-兜底去掉分数字样', pd3.titles[0].title, '第一个标题');
+  w.genState.md = '# 原标题\n\n正文内容';
+  w.applyTitle('全新标题');
+  check('标题-替换原有标题', w.firstTitle(w.genState.md), '全新标题');
+  w.genState.md = '只有正文没有标题';
+  w.applyTitle('后加的标题');
+  check('标题-无标题时补上', /^# 后加的标题/.test(w.genState.md), true);
+  check('标题-原文未丢', w.genState.md.indexOf('只有正文没有标题') >= 0, true);
+  /* 18) 多格式导出 */
+  check('导出-文件名清洗', w.safeFileName('a/b:c*?"d'), 'a_b_c_d');
+  check('导出-空标题兜底', w.safeFileName('').indexOf('article_') >= 0, true);
+  w.URL.createObjectURL = () => 'blob:test';
+  let wordOk = true;
+  try { w.exportWordDoc('测试标题', '<p>正文</p>'); } catch (e) { wordOk = false; }
+  check('导出Word-可调用不报错', wordOk, true);
+  check('导出PDF-函数可用', typeof w.exportPdfByPrint, 'function');
+  /* 19) 深色模式预览 */
+  w.darkPreview = false; w.applyDarkPreview();
+  check('深色-默认不加class', w.document.getElementById('phoneFrame').classList.contains('dark'), false);
+  w.darkPreview = true; w.applyDarkPreview();
+  check('深色-加class', w.document.getElementById('phoneFrame').classList.contains('dark'), true);
+  check('深色-背景压暗', w.document.getElementById('previewBody').style.background.indexOf('17, 17, 17') >= 0, true);
+  w.darkPreview = false; w.applyDarkPreview();
+  check('深色-可退出', w.document.getElementById('previewBody').style.background.indexOf('255') >= 0, true);
+  /* 20) 自动规范化开关 */
+  w.typoSetAuto(true);
+  check('规范化-开关可持久化', w.typoAutoOn(), true);
+  w.typoSetAuto(false);
+  check('规范化-开关可关闭', w.typoAutoOn(), false);
+  w.typoSetAuto(true);
+  /* 21) AI 味检测（模式族参考 qu-ai-wei：每类都带「怎么改 / 什么时候别改」双向判据） */
+  const cleanMd = '# 标题\n\n我到楼下才想起来钥匙还在桌上。站了两秒。又觉得有点好笑。\n\n这周第二次了。';
+  const cleanD = w.detectAiFlavor(cleanMd);
+  check('AI味-干净文本不误报', cleanD.items.length, 0);
+  check('AI味-干净文本零分', cleanD.score, 0);
+  const aiMd = '# 标题\n\n随着人工智能技术的快速发展，在各行业数字化转型的背景下，赋能与闭环已成为关键。\n\n' +
+    '首先，值得注意的是，这一点至关重要。\n\n其次，它不仅提升了效率，更实现了降维打击。\n\n最后，不容忽视的是，其意义重大。';
+  const aiD = w.detectAiFlavor(aiMd);
+  check('AI味-能检出命中', aiD.score > 0, true);
+  check('AI味-命中多个类别', aiD.items.length >= 4, true);
+  const aiKeys = aiD.items.map((x) => x.key);
+  check('AI味-检出宏大开场', aiKeys.indexOf('macroOpen') >= 0, true);
+  check('AI味-检出空强调', aiKeys.indexOf('emptyEmph') >= 0, true);
+  check('AI味-检出硬拆三点', aiKeys.indexOf('enumer') >= 0, true);
+  check('AI味-检出商业黑话', aiKeys.indexOf('bizword') >= 0, true);
+  check('AI味-每类都有改法', aiD.items.every((x) => x.fix && x.fix.length > 0), true);
+  check('AI味-每类都有保留判据', aiD.items.every((x) => x.keep && x.keep.length > 0), true);
+  check('AI味-命中带原文样例', aiD.items.some((x) => x.samples.length > 0), true);
+  check('AI味-每千字密度为正', aiD.per1k > 0, true);
+  /* 句长均匀：词表查不出来，只能算变异系数 */
+  const uniformMd = '# 标题\n\n' + Array(8).fill('这是一句长度完全相同的测试句子用来验证节奏').join('。') + '。';
+  const uD = w.detectAiFlavor(uniformMd);
+  check('AI味-均匀句长被检出', uD.items.some((x) => x.key === 'uniform'), true);
+  check('AI味-均匀句长变异系数低', !!uD.rhythm && uD.rhythm.cv < 0.45, true);
+  const variedMd = '# 标题\n\n行吧。\n\n这是一句中等长度的话。\n\n没了。\n\n' +
+    '这句要长一些，长到能明显拉开句长的差距，大概这么长就差不多了吧我还想再补一点说明。\n\n对。\n\n就这样吧先这样。';
+  const vD = w.detectAiFlavor(variedMd);
+  check('AI味-参差句长不误报', vD.items.some((x) => x.key === 'uniform'), false);
+  /* 定向改写清单 */
+  const dir = w.aiFlavorDirective(aiMd);
+  check('AI味-定向清单非空', dir.length > 0, true);
+  check('AI味-清单含命中类名', dir.indexOf('宏大开场') >= 0, true);
+  check('AI味-清单含保留判据', dir.indexOf('什么时候别改') >= 0, true);
+  check('AI味-干净文本不生成清单', w.aiFlavorDirective(cleanMd), '');
+  /* 检测器有效性：删掉命中词后分数必须下降（否则复检闭环就是假的） */
+  const improvedMd = aiMd.replace(/首先，|其次，|最后，|值得注意的是，|不容忽视的是|至关重要|意义重大|。它不仅提升了效率，更实现了降维打击/g, '');
+  check('AI味-删掉命中词后分数下降', w.detectAiFlavor(improvedMd).score < aiD.score, true);
+  /* 发布前体检接入 */
+  const ais = w.scanAiFlavor(aiMd);
+  check('AI味-体检项非空', ais.length > 0, true);
+  check('AI味-体检项标题统一', ais.every((x) => x.title.indexOf('AI 味残留') === 0), true);
+  check('AI味-密集命中算提醒', ais.some((x) => x.level === 'warn'), true);
+  check('AI味-干净文本无体检项', w.scanAiFlavor(cleanMd).length, 0);
+  /* 入库指标 */
+  const gm = w.genMetrics(aiMd, w.DEFAULT_PROFILE);
+  check('AI味-指标含aiFlavor', gm.some((x) => x.name === 'aiFlavor'), true);
+  check('AI味-指标值等于检测分数', gm.find((x) => x.name === 'aiFlavor').value, aiD.score);
+  check('AI味-指标含每千字密度', gm.some((x) => x.name === 'aiFlavorPer1k'), true);
+  check('AI味-指标含句长变异系数', gm.some((x) => x.name === 'sentLenCv'), true);
+  /* 真实驱动体检入口，确认 AI 味项渲染到面板且命中词可点击定位 */
+  w.genState.md = aiMd;
+  w.runPublishCheck();
+  const cp2 = w.document.getElementById('checkPanel');
+  check('AI味-体检面板渲染出AI味项', cp2.textContent.indexOf('AI 味残留') >= 0, true);
+  check('AI味-面板项可点击定位', cp2.querySelectorAll('.chk-hit').length > 0, true);
+  check('AI味-面板给出改法与保留判据', cp2.textContent.indexOf('什么时候别改') >= 0, true);
 
   console.log('== 结果 ==');
   console.log(`PASS ${pass}, FAIL ${fail}`);

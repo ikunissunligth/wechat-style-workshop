@@ -3,9 +3,10 @@
 """
 公众号风格工坊 - 本地服务
 静态托管 index.html，并把 /api/ai/chat 代理到用户配置的大模型 API（OpenAI 兼容格式）。
-仅用 Python 标准库，无需安装任何依赖。
+业务数据落 SQLite（见 db.py，同为 Python 标准库），仅用标准库，无需安装任何依赖。
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -17,6 +18,8 @@ import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+import db
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ARTICLES_DIR = os.path.join(ROOT, "articles")
@@ -602,7 +605,116 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # ------------------------------------------------------------------
+    # 业务 API 路由（数据全部走 db.py）。返回 None 表示不是这类接口，交回旧逻辑。
+    # 统一放这里，GET/POST/PUT/DELETE 共用一份，接口清单才能一眼看全。
+    # ------------------------------------------------------------------
+    def _api_router(self, method, body=None):
+        p = self.path.split("?")[0]
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        body = body or {}
+        try:
+            # 概览
+            if p == "/api/stats" and method == "GET":
+                return 200, db.stats()
+            # 账号
+            if p == "/api/accounts" and method == "GET":
+                return 200, {"items": db.list_accounts()}
+            if p == "/api/accounts" and method == "POST":
+                return 200, {"id": db.create_account(body)}
+            m = re.match(r"^/api/accounts/(\d+)$", p)
+            if m:
+                if method == "PUT":
+                    return 200, {"ok": db.update_account(int(m.group(1)), body)}
+                if method == "DELETE":
+                    return 200, {"ok": db.delete_account(int(m.group(1)))}
+            # 风格档案（sync 必须排在前，否则被下面的 id 规则吃掉）
+            if p == "/api/profiles" and method == "GET":
+                return 200, {"items": db.list_profiles()}
+            if p == "/api/profiles" and method == "POST":
+                return 200, {"id": db.save_profile(body.get("profile") or body)}
+            if p == "/api/profiles/sync" and method == "POST":
+                return 200, {"ok": True, "count": db.replace_profiles(body.get("profiles") or [])}
+            m = re.match(r"^/api/profiles/([^/]+)/layers$", p)
+            if m and method == "GET":
+                return 200, {"items": db.get_layers(urllib.parse.unquote(m.group(1)))}
+            m = re.match(r"^/api/profiles/([^/]+)$", p)
+            if m:
+                pid = urllib.parse.unquote(m.group(1))
+                if method == "GET":
+                    item = db.get_profile(pid)
+                    return (200, {"item": item}) if item else (404, {"error": "档案不存在"})
+                if method == "DELETE":
+                    return 200, {"ok": db.delete_profile(pid)}
+            # 分析结果（画像 + 六层）
+            if p == "/api/analyze" and method == "POST":
+                return 200, {"id": db.save_profile(body.get("profile") or {})}
+            # 生成记录
+            if p == "/api/generations" and method == "GET":
+                return 200, {"items": db.list_generations(
+                    int((q.get("limit") or ["50"])[0]),
+                    (q.get("profileId") or [None])[0])}
+            if p == "/api/generations" and method == "POST":
+                gid = db.add_generation(body)
+                if body.get("metrics"):
+                    db.add_metrics(gid, body["metrics"])
+                return 200, {"id": gid}
+            m = re.match(r"^/api/generations/(\d+)/metrics$", p)
+            if m and method == "POST":
+                return 200, {"count": db.add_metrics(int(m.group(1)), body.get("metrics") or [])}
+            m = re.match(r"^/api/generations/(\d+)$", p)
+            if m and method == "GET":
+                item = db.get_generation(int(m.group(1)))
+                return (200, {"item": item}) if item else (404, {"error": "记录不存在"})
+            # 指标（实验数据）
+            if p == "/api/metrics" and method == "GET":
+                return 200, {"items": db.list_metrics()}
+            # 盲评（实验）
+            if p == "/api/evaluations" and method == "GET":
+                return 200, {"items": db.list_evaluations()}
+            if p == "/api/evaluations" and method == "POST":
+                return 200, {"id": db.add_evaluation(body)}
+            if p == "/api/evaluations/summary" and method == "GET":
+                return 200, {"items": db.eval_summary()}
+            # 抓取日志
+            if p == "/api/fetch_logs" and method == "GET":
+                return 200, {"items": db.list_fetch_logs(int((q.get("limit") or ["100"])[0]))}
+            # 素材（图片索引）
+            if p == "/api/images" and method == "GET":
+                return 200, {"items": db.list_images((q.get("group") or [None])[0])}
+        except Exception as e:
+            return 500, {"error": "数据层错误：%s" % e}
+        return None
+
+    def do_PUT(self):
+        r = self._api_router("PUT", self._read_body())
+        self._json(*(r or (404, {"error": "未知接口"})))
+
+    def do_DELETE(self):
+        r = self._api_router("DELETE", self._read_body())
+        self._json(*(r or (404, {"error": "未知接口"})))
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(length) or b"{}")
+        except Exception:
+            return {}
+
+    NEW_API_POST = ("/api/accounts", "/api/profiles", "/api/profiles/sync", "/api/analyze",
+                    "/api/generations", "/api/evaluations")
+
+    def _is_new_api_post(self):
+        p = self.path.split("?")[0]
+        if p in self.NEW_API_POST:
+            return True
+        return bool(re.match(r"^/api/(accounts/\d+|profiles/[^/]+|generations/\d+(/metrics)?)$", p))
+
     def do_GET(self):
+        r = self._api_router("GET")
+        if r is not None:
+            self._json(*r)
+            return
         if self.path == "/api/health":
             self._json(200, {"ok": True})
             return
@@ -625,17 +737,21 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if self.path == "/api/articles":
             try:
-                items = []
-                if os.path.isdir(ARTICLES_DIR):
-                    for d in sorted(os.listdir(ARTICLES_DIR)):
-                        idx_file = os.path.join(ARTICLES_DIR, d, "index.json")
-                        if os.path.isfile(idx_file):
-                            with open(idx_file, encoding="utf-8") as f:
-                                items.append(json.load(f))
-                items.sort(key=lambda x: x.get("fetchedAt", 0), reverse=True)
-                self._json(200, {"items": items})
-            except Exception as e:
-                self._json(500, {"error": str(e)})
+                self._json(200, {"items": db.list_articles()})
+            except Exception:
+                # 库不可用时回落到磁盘扫描，保证抓取成果不会因为数据库问题看不见
+                try:
+                    items = []
+                    if os.path.isdir(ARTICLES_DIR):
+                        for d in sorted(os.listdir(ARTICLES_DIR)):
+                            idx_file = os.path.join(ARTICLES_DIR, d, "index.json")
+                            if os.path.isfile(idx_file):
+                                with open(idx_file, encoding="utf-8") as f:
+                                    items.append(json.load(f))
+                    items.sort(key=lambda x: x.get("fetchedAt", 0), reverse=True)
+                    self._json(200, {"items": items})
+                except Exception as e:
+                    self._json(500, {"error": str(e)})
             return
         if self.path == "/":
             self._serve_file(APP_REL)
@@ -681,6 +797,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self):
+        # POST 的请求体只能读一次，所以先判断是不是数据层接口，是就在这里读掉并分发，
+        # 不是则原样交给下面的旧逻辑（旧逻辑各自读 body）。
+        if self._is_new_api_post():
+            r = self._api_router("POST", self._read_body())
+            self._json(*(r or (404, {"error": "未知接口"})))
+            return
         if self.path == "/api/fetch_article":
             try:
                 length = int(self.headers.get("Content-Length", 0))
@@ -722,11 +844,27 @@ class Handler(SimpleHTTPRequestHandler):
                 with open(os.path.join(ARTICLES_DIR, job_id, "index.json"),
                           "w", encoding="utf-8") as f:
                     json.dump(info, f, ensure_ascii=False, indent=1)
+                # 落库（库为真源；写库失败只记日志，不能让已经抓到的图白费）
+                try:
+                    meta = dict(info)
+                    snap_rel = "articles/_snapshots/%s.html" % hashlib.md5(
+                        url.encode("utf-8")).hexdigest()
+                    if os.path.isfile(os.path.join(ROOT, snap_rel.replace("/", os.sep))):
+                        meta["snapshot"] = snap_rel
+                    db.upsert_article(meta)
+                    db.add_fetch_log(url, "ok", 0, bool(art.get("fromSnapshot")),
+                                     "快照复用" if art.get("fromSnapshot") else "")
+                except Exception as e:
+                    sys.stderr.write("[db] 写库失败：%s\n" % e)
                 if body.get("withHtml"):
                     info = dict(info)
                     info["html"] = art["html"]
                 self._json(200, info)
             except Exception as e:
+                try:
+                    db.add_fetch_log(url, "fail", 1, False, str(e))
+                except Exception:
+                    pass
                 self._json(502, {"error": "抓取失败：%s" % e})
             return
         if self.path == "/api/set_group":
@@ -794,7 +932,12 @@ class Handler(SimpleHTTPRequestHandler):
                 self._json(400, {"error": "单次最多删 500 个文件，请分批"})
                 return
             try:
-                self._json(200, purge_images(files))
+                res = purge_images(files)
+                try:
+                    db.delete_images(files)  # 文件已删，这里只清库里的悬空记录
+                except Exception as e:
+                    sys.stderr.write("[db] 清理库记录失败：%s\n" % e)
+                self._json(200, res)
             except Exception as e:
                 self._json(500, {"error": str(e)})
             return
@@ -941,6 +1084,13 @@ def main():
         print("服务已在运行，直接打开浏览器…")
         webbrowser.open("http://127.0.0.1:8765/")
         return
+    try:
+        info = db.init_db()
+        if info.get("imported"):
+            print("已初始化数据库，导入历史文章 %d 篇" % info["imported"])
+        print("数据库：%s" % db.DB_PATH)
+    except Exception as e:
+        print("数据库初始化失败（将回落到文件模式）：%s" % e)
     port = pick_port()
     url = "http://127.0.0.1:%d/" % port
     print("公众号风格工坊已启动: %s  （关闭本窗口或 Ctrl+C 退出）" % url)

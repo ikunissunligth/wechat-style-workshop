@@ -41,7 +41,7 @@ if (missingIds.length) { console.error('FAIL: $() refs missing in HTML:', missin
 console.log('OK: all', refs.size, 'referenced IDs exist in HTML');
 
 // 4. querySelector('#slotPickGrid') 等动态创建的 ID 一致性（手工清单）
-const dynCreated = ['slotPickGrid', 'slotUrl', 'slotUrlOk', 'slotUpBtn', 'slotUp', 'slotRemove', 'slotUnfill', 'edName', 'edTags', 'edSave', 'edDel', 'imCopyUrl', 'imOpen', 'assetPickGrid', 'netSearchInput', 'netSearchGrid', 'netSearchBtn', 'tuneFontSize', 'tuneColor', 'tuneLineHeight', 'tuneReset', 'btnPurgePool'];
+const dynCreated = ['slotPickGrid', 'slotUrl', 'slotUrlOk', 'slotUpBtn', 'slotUp', 'slotRemove', 'slotUnfill', 'edName', 'edTags', 'edSave', 'edDel', 'imCopyUrl', 'imOpen', 'assetPickGrid', 'netSearchInput', 'netSearchGrid', 'netSearchBtn', 'tuneFontSize', 'tuneColor', 'tuneLineHeight', 'tuneReset', 'btnPurgePool', 'twTopic', 'twCount', 'twFlavor', 'twGo', 'twCopyPrompt', 'twOut'];
 const dynUsed = [...m[1].matchAll(/querySelector\('#([A-Za-z]+)'\)/g)].map(x => x[1]);
 const missDyn = dynUsed.filter(u => !dynCreated.includes(u));
 if (missDyn.length) { console.error('FAIL: dynamically created IDs not declared:', missDyn); process.exit(1); }

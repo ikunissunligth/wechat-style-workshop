@@ -175,40 +175,6 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
 .slot-filled:hover:after{opacity:1}
 .inline-emoji{width:35px;height:auto;vertical-align:middle}
 
-/* 深色预览：模拟微信公众号深色模式的反色效果（背景压暗、正文转浅灰、图片略降亮） */
-.phone.dark{background:#111;border-color:#2a2a2a;box-shadow:0 6px 22px rgba(0,0,0,.35)}
-.phone.dark .pv-quote{border-left-color:#4a4a4a;color:#909090}
-.phone.dark .pv-code{background:#1c1c1c;color:#c9c9c9}
-.phone.dark img{filter:brightness(.86) contrast(1.02)}
-/* 深色预览下槽位仍要保持可辨识（它们是编辑态标记，不是正文内容） */
-.phone.dark .slot-img{background:#16283a;color:#7fb6ee;border-color:#7fb6ee}
-.phone.dark .slot-emoji{background:#2f1d16;color:#d89a7c;border-color:#d89a7c}
-
-/* ---------- 发布前体检 ---------- */
-.chk-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
-.chk-num{font-size:32px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
-.chk-grade{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
-.chk-good .chk-num{color:#2f855a}
-.chk-mid .chk-num{color:var(--warn-strong)}
-.chk-bad .chk-num{color:var(--danger)}
-:root[data-theme="dark"] .chk-good .chk-num{color:#5fd39a}
-.chk-sum{font-size:12px;color:var(--muted);line-height:1.7}
-.chk-sec{font-size:12px;color:var(--muted);font-weight:500;margin:16px 0 2px}
-.chk-item{border:1px solid var(--border);border-left-width:3px;border-radius:8px;padding:9px 12px;margin-top:8px;background:var(--card)}
-.chk-item.block{border-left-color:var(--danger)}
-.chk-item.warn{border-left-color:var(--warn-strong)}
-.chk-item.info{border-left-color:var(--accent)}
-.chk-item.pass{border-left-color:#3aa76d}
-.chk-t{font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.chk-lv{font-size:11px;padding:1px 7px;border-radius:4px;border:1px solid var(--border);color:var(--muted);font-weight:400}
-.chk-item.block .chk-lv{color:var(--danger);border-color:var(--danger-border)}
-.chk-item.warn .chk-lv{color:var(--warn-strong);border-color:var(--warn-border)}
-.chk-d{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.65}
-.chk-hits{margin-top:7px;display:flex;flex-wrap:wrap;gap:6px}
-.chk-hit{font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:1px 8px;cursor:pointer}
-.chk-hit:hover{border-color:var(--accent);color:var(--accent)}
-.chk-act{margin-top:8px}
-
 /* ---------- 表情包库 ---------- */
 .emoji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
 .emoji-card{border:1px solid var(--border);border-radius:10px;padding:8px;text-align:center;cursor:pointer;background:var(--card)}
@@ -420,24 +386,11 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
       <span class="muted" id="wordCount" style="margin-left:4px;font-variant-numeric:tabular-nums"></span>
     </div>
     <div class="note" style="margin-bottom:12px">蓝色 <span class="slot slot-img">图：…</span> 和橘色 <span class="slot slot-emoji">表情：…</span> 是槽位：点击可从素材库选图、贴链接或上传本地图片。<b>配好之后也能点图片再换</b>（鼠标移上去会显示「点击更换」）。配错了用「重配全部」一键重来。复制时未填充的槽位会被跳过。</div>
-    <div class="toolbar" style="margin-top:8px">
-      <button class="btn" id="btnCheck" type="button" title="违规词、标题长度、配图、AI 味残留等逐项检查">发布前体检</button>
-      <button class="btn" id="btnTitles" type="button" title="按风格档案生成候选标题并打分，附 54 字内摘要">标题 / 摘要</button>
-      <button class="btn" id="btnTypo" type="button" title="中英文间加空格、半角标点转全角、省略号与重复标点修正">排版规范化</button>
-      <button class="btn" id="btnDarkPreview" type="button" title="按微信深色模式的反色规则预览读者看到的样子">深色预览</button>
-      <button class="btn" id="btnExportWord" type="button" title="导出 .doc，Word / WPS 可直接打开">导出 Word</button>
-      <button class="btn" id="btnExportPdf" type="button" title="调用浏览器打印，另存为 PDF">导出 PDF</button>
-      <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-size:12px;color:var(--muted)">
-        <input type="checkbox" id="chkTypoAuto" checked style="width:auto;margin:0;cursor:pointer">
-        复制 / 导出时自动做排版规范化
-      </label>
-    </div>
     <div id="mdEditorWrap" style="display:none;margin-bottom:14px">
       <textarea class="md-editor" id="mdEditor"></textarea>
       <div style="margin-top:8px"><button class="btn primary sm" id="btnApplyMd" type="button">应用并刷新预览</button></div>
     </div>
-    <div class="phone-wrap"><div class="phone" id="phoneFrame"><div class="preview-body" id="previewBody"></div></div></div>
-    <div id="checkPanel" style="display:none;margin-top:18px"></div>
+    <div class="phone-wrap"><div class="phone"><div class="preview-body" id="previewBody"></div></div></div>
   </div>
 </section>
 
@@ -534,15 +487,6 @@ hr.thin{border:none;border-top:1px solid var(--border);margin:16px 0}
       <input type="file" id="importProfilesFile" accept=".json" style="display:none">
     </div>
   </div>
-  <div class="card">
-    <h2>数据存储（SQLite）</h2>
-    <p class="muted">业务数据落在项目目录的 <code>data/workshop.db</code>（Python 标准库 sqlite3，无需安装数据库）。浏览器本地存储只当缓存：启动时以库为准同步，保存时异步回写。<b>API Key 不入库</b>，仍只留在本机浏览器。</p>
-    <div id="dbStats" class="note">读取中…</div>
-    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn sm" id="btnDbRefresh" type="button">刷新</button>
-      <span class="muted" id="dbHint"></span>
-    </div>
-  </div>
 </section>
 
 </main>
@@ -585,31 +529,6 @@ function toast(msg,ms,type){
   it.addEventListener('click',function(){clearTimeout(it.__kill);dismissToast(it)});
 }
 
-/* ---------- 设置页：数据存储概况（直接读库里的行数，用来确认落库真的生效）---------- */
-var DB_LABELS=[['account','公众号账号'],['article','抓取文章'],['article_snapshot','原文快照'],
-  ['style_profile','风格档案'],['profile_layer','六层画像'],['image_group','图片分组'],
-  ['image_asset','图片素材'],['generation','生成记录'],['generation_metric','生成指标'],
-  ['evaluation','盲评记录'],['fetch_log','抓取日志']];
-function loadDbStats(){
-  var box=$('dbStats');
-  if(!box)return;
-  if(!dbEnabled()){
-    box.textContent='当前是 file:// 直开模式，没有本地服务，数据只存在浏览器里。双击 start.bat 启动后即可落库。';
-    return;
-  }
-  apiGet('/api/stats').then(function(d){
-    var h='<div style="display:flex;flex-wrap:wrap;gap:8px">';
-    DB_LABELS.forEach(function(x){
-      h+='<span class="tag">'+x[1]+' '+((d&&d[x[0]])||0)+'</span>';
-    });
-    h+='</div>';
-    box.innerHTML=h;
-    if($('dbHint'))$('dbHint').textContent='共 11 张表 · data/workshop.db';
-  }).catch(function(e){
-    box.textContent='读取失败：'+(e.message||e);
-  });
-}
-
 /* ---------- 设置 ---------- */
 var DEFAULT_SETTINGS={baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',apiKey:'',model:'qwen-plus',temperature:0.7};
 function getSettings(){try{var s=JSON.parse(localStorage.getItem('wxw_settings')||'{}');return Object.assign({},DEFAULT_SETTINGS,s)}catch(e){return Object.assign({},DEFAULT_SETTINGS)}}
@@ -628,10 +547,7 @@ var DEFAULT_PROFILE={id:'_default',name:'通用清爽风（内置）',createdAt:
   argument:{total:0,data:0,quote:0,first:0,question:0,colloquial:0},
   tone:'口语化、自然、轻松，适度使用网络用语，一句一段'};
 function loadProfiles(){try{return JSON.parse(localStorage.getItem('wxw_profiles')||'[]')}catch(e){return[]}}
-function saveProfiles(list){
-  localStorage.setItem('wxw_profiles',JSON.stringify(list));
-  if(typeof pushProfiles==='function')pushProfiles(); /* 本地落盘后异步回写数据库 */
-}
+function saveProfiles(list){localStorage.setItem('wxw_profiles',JSON.stringify(list))}
 function findProfile(id){
   var l=loadProfiles();
   for(var i=0;i<l.length;i++){
@@ -639,178 +555,6 @@ function findProfile(id){
   }
   if(String(id)===String(DEFAULT_PROFILE.id))return DEFAULT_PROFILE;
   return null;
-}
-
-/* ---------- 数据同步层：SQLite 为真源，localStorage 为离线缓存 ----------
-   为什么要两层：评审口径要有数据库与接口，但"双击即用、断网能写"是这个工具的命。
-   规则：启动时以库为准覆盖本地；每次本地保存后异步回写；接口挂了静默降级，绝不用报错打断操作。
-   例外：API Key 与排版微调不入库——密钥不出机是 README 对用户的承诺，不能破。 */
-function dbEnabled(){return aiUseProxy()}
-function apiReq(method,path,body){
-  var opt={method:method,headers:{'Content-Type':'application/json'}};
-  if(body!==undefined&&body!==null)opt.body=JSON.stringify(body);
-  return fetch(path,opt).then(function(r){
-    return r.json().then(function(d){if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d});
-  });
-}
-function apiGet(path){return apiReq('GET',path)}
-/* 档案：启动时从库拉取，库里没有（首次）则把本地的推上去 */
-function pullProfiles(){
-  if(!dbEnabled())return Promise.resolve(0);
-  return apiGet('/api/profiles').then(function(d){
-    var items=(d&&d.items)||[];
-    if(items.length){saveProfiles(items);renderProfileList();refreshGenSelect();return items.length}
-    var local=loadProfiles();
-    if(local.length)apiReq('POST','/api/profiles/sync',{profiles:local}).catch(function(){});
-    return 0;
-  }).catch(function(){return 0});
-}
-function pushProfiles(){
-  if(!dbEnabled())return;
-  apiReq('POST','/api/profiles/sync',{profiles:loadProfiles()}).catch(function(){});
-}
-/* 生成记录：写库是为了实验评估能取到数，本地历史仍然保留（离线也能回滚） */
-function pushGeneration(md,profileName,topic,lenSel,metrics){
-  if(!dbEnabled())return;
-  var p=findProfile(genState.profileId);
-  apiReq('POST','/api/generations',{
-    profileId:genState.profileId||'',
-    profileName:profileName||(p?p.name:''),
-    topic:topic||'',lengthSel:lenSel||'',
-    model:(getSettings().model||''),
-    title:firstTitle(md),markdown:md,
-    wordCount:countCnWords(md),
-    metrics:metrics||[]
-  }).catch(function(){});
-}
-/* 生成稿的量化指标：与风格档案同一套口径（段长、节奏、槽位数），
-   存进 generation_metric，评估实验直接 SQL 出表——"像不像"从主观变可查。 */
-function genMetrics(md,p){
-  var body=mdBodyText(md);
-  var paras=body.split(/\n+/).filter(function(x){
-    var t=x.trim();
-    return t&&!/^[#>\-*\d]/.test(t);
-  });
-  var lens=paras.map(function(x){return x.replace(/\s/g,'').length});
-  var avg=lens.length?Math.round(lens.reduce(function(a,b){return a+b},0)/lens.length):0;
-  var mx=lens.length?Math.max.apply(null,lens):0;
-  var pc=p&&p.paragraphs?p.paragraphs:{avgLen:0,maxLen:0};
-  var flavor=detectAiFlavor(md);
-  return [
-    {name:'wordCount',value:countCnWords(md),target:0},
-    {name:'paraCount',value:paras.length,target:0},
-    {name:'avgParaLen',value:avg,target:pc.avgLen||0},
-    {name:'maxParaLen',value:mx,target:pc.maxLen||0},
-    {name:'imgSlot',value:(String(md).match(/\[图[：:]/g)||[]).length,target:0},
-    {name:'emojiSlot',value:(String(md).match(/\[表情[：:]/g)||[]).length,target:0},
-    /* AI 味残留：越低越好，目标恒为 0。改前改后各存一次就能算出"改写到底有没有用"，
-       这是效果评估实验里唯一不需要人工打分就能拿到的一项。 */
-    {name:'aiFlavor',value:flavor.score,target:0},
-    {name:'aiFlavorPer1k',value:flavor.per1k,target:0},
-    {name:'sentLenCv',value:(flavor.rhythm?flavor.rhythm.cv:0),target:0}
-  ];
-}
-
-/* ---------- AI 味检测 ---------- */
-/* 模式族参考 qu-ai-wei（GitHub 上专门做「去 AI 味」的 skill）归纳的中文 AI 味结构。
-   关键不是「见到就删」：每一类都配一对判据——什么时候值得改、什么时候必须保留。
-   而且按 qu-ai-wei 的口径，单独出现一次通常不算问题，只有反复出现才处理，
-   所以这里记命中次数而不是记「是否出现」。 */
-var AI_FLAVOR_PATTERNS=[
-  {key:'macroOpen',name:'宏大开场',
-   re:/(随着[^，。；]{0,14}?(?:发展|进步|普及|演进|迭代)|在[^，。；]{0,18}?(?:背景|时代|浪潮|趋势)下|当今社会|近年来，随着)/g,
-   fix:'删掉只负责营造宏大感的开场，直接从具体场景、反常识判断或数字进入',
-   keep:'若这段背景确实解释了后文的条件或时间，保留事实、只换句式'},
-  {key:'emptyEmph',name:'元话语与套话',
-   /* 词表合并了两条来源：buildGenPrompt 的「元话语与过渡腔」黑名单，
-      以及体检原有的 ai 词表（综上所述/赋能/闭环…）。两者本来就是同一件事，只留一处，
-      否则同一个词会在体检面板里被报两次。
-      注意「值得注意的是」和「值得一提」是两个词，都不能漏——漏了就是检测器认不出自己的黑名单。 */
-   re:/(值得注意的是|值得一提|需要注意的是|需要强调的是|更重要的是|不可否认|不容置疑|众所周知|毫无疑问|总而言之|综上所述|归根结底|由此可见|换言之|简而言之|总的来说|不难发现|不难看出|一言以蔽之|某种程度上|值得一试的是|让我们|希望本文|信息爆炸)/g,
-   fix:'删掉只强调、没有新增事实的引导语；总结腔（总而言之/综上所述）与呼吁式收尾直接删',
-   keep:'若确实承担转折、限定或作者本人判断，改用更口语的说法保留'},
-  {key:'notBut',name:'对仗式「不是…而是」',
-   re:/(不是[^，。；]{2,24}[，、]?而是|关键不在于[^，。；]{2,24}[，、]?而在于|真正(?:重要的)?不是[^，。；]{2,20}[，、]?而是)/g,
-   fix:'拆掉对仗，改成一句直给的判断',
-   keep:'两端确为不同动作时保留事实区别，但仍要改写句式'},
-  {key:'notOnly',name:'工整递进排比',
-   re:/(不仅[^，。；]{2,20}[，、]?(?:更|还|而且)[^，。；]{2,20}|既要[^，。；]{2,14}?也要[^，。；]{2,14}|既[^，。；]{2,12}[，、]?(?:又|也)[^，。；]{2,12})/g,
-   fix:'两端都在拔高同一件事时，合并成一句',
-   keep:'确有递进关系且两端提供不同信息时保留'},
-  {key:'enumer',name:'硬拆三点',
-   re:/(^|\n)\s*(?:首先|其次|再次|最后|第一[，、]|第二[，、]|第三[，、])/g,
-   fix:'个人叙述被硬拆成整齐三点时，改成自然顺序的叙述',
-   keep:'操作步骤、责任分工或答题结构本身就是要点，保留'},
-  {key:'bizword',name:'商业黑话',
-   re:/(赋能|抓手|闭环|链路|护城河|生态位|底层逻辑|认知升级|降维打击|弯道超车|破局|跃迁|颗粒度|沉淀方法论|对齐一下|打法)/g,
-   fix:'短段密集出现、却没有「谁做了什么」时，换成具体动作',
-   keep:'行业固定用语或原文有明确对象时保留'},
-  {key:'verbosePrep',name:'冗余介词框架',
-   re:/(通过[^，。；]{2,14}?的方式|由于[^，。；]{2,14}?的原因|在[^，。；]{2,14}?的过程中|对于[^，。；]{2,14}?而言)/g,
-   fix:'删掉没有增加信息的介词框架，直接说事',
-   keep:'删除后会改变条件、原因或正式程度时保留'},
-  {key:'connective',name:'段段连接词',
-   re:/(?:^|\n)\s*(?:然而|此外|因此|同时|另外|与此同时|综上|总的来说)[，、]?/g,
-   fix:'句间并没有真实对应关系的连接词，直接删',
-   keep:'因果、转折、补充关系真实存在时保留'},
-  {key:'passive',name:'被字句与公文腔',
-   re:/(被[^，。；]{2,14}?(?:了|到|给)|进行了[^，。；]{2,14}|加以[^，。；]{2,10}|予以[^，。；]{2,10})/g,
-   fix:'主干被压住、像逐词翻译时，改成主动句',
-   keep:'被动能明确受事方或责任方时保留'},
-  {key:'emptyPraise',name:'空泛高评价',
-   re:/(至关重要|尤为关键|不容忽视|意义重大|令人深思|发人深省|新的视角|颇具启发|深远影响|革命性|深度剖析|深入剖析|全面解析|多维度|全方位|一文看懂)/g,
-   fix:'换成具体细节；实在没细节可换，就把这句评价删掉',
-   keep:'评价后面确实跟着具体依据时保留'}
-];
-/* 检测一遍文章里的 AI 味。返回每类的命中次数与双向判据，供两处使用：
-   ① 生成后的二次改写——按命中项定向改，而不是笼统地说"去 AI 味"；
-   ② 发布前体检——把"AI 味残留"做成可打分、可定位的检查项。 */
-function detectAiFlavor(md){
-  var body=String(mdBodyText(md)||'');
-  var n=countCnWords(md)||1;
-  var items=[],total=0;
-  AI_FLAVOR_PATTERNS.forEach(function(p){
-    var m=body.match(p.re)||[];
-    if(!m.length)return;
-    items.push({key:p.key,name:p.name,hits:m.length,fix:p.fix,keep:p.keep,
-                samples:m.slice(0,3).map(function(s){return String(s).trim().slice(0,18)})});
-    total+=m.length;
-  });
-  /* 第十类查不出来、只能算：全篇句长是否均匀。
-     真人写作的句长参差，机器最典型的毛病是每句都差不多长——用变异系数衡量。 */
-  var rhythm=null;
-  var sents=body.split(/[。！？；\n]+/)
-    .map(function(s){return s.replace(/\s/g,'')})
-    .filter(function(s){return s.length>1});
-  if(sents.length>=6){
-    var lens=sents.map(function(s){return s.length});
-    var mean=lens.reduce(function(a,b){return a+b},0)/lens.length;
-    var sd=Math.sqrt(lens.reduce(function(a,b){return a+(b-mean)*(b-mean)},0)/lens.length);
-    var cv=mean?(sd/mean):0;
-    rhythm={sentences:sents.length,mean:Math.round(mean*10)/10,
-            sd:Math.round(sd*10)/10,cv:Math.round(cv*1000)/1000};
-    if(cv<0.45){   /* 变异系数低于 0.45：句长过于均匀，是机器节奏的典型特征 */
-      items.push({key:'uniform',name:'句长均匀',hits:1,
-        fix:'打散节奏：穿插 2-6 字的极短句单独成段，也留一两个 40 字以上的长句',
-        keep:'公文、条款、操作步骤本身需要平行结构时保留',samples:[]});
-      total+=1;
-    }
-  }
-  return {score:total,per1k:Math.round(total/(n/1000)*1000)/1000,
-          items:items,rhythm:rhythm,words:n};
-}
-/* 给二次改写用的定向清单：把检测到的类和它的双向判据一起交给模型 */
-function aiFlavorDirective(md){
-  var d=detectAiFlavor(md);
-  if(!d.items.length)return '';
-  var s='【初稿检测到的 AI 味（只处理下面这些，没提到的不要动）】\n';
-  d.items.forEach(function(x,i){
-    s+=(i+1)+'. '+x.name+'（命中 '+x.hits+' 处）\n'+
-       '   怎么改：'+x.fix+'\n'+
-       '   什么时候别改：'+x.keep+'\n';
-    if(x.samples&&x.samples.length)s+='   例：'+x.samples.join(' / ')+'\n';
-  });
-  return s+'\n';
 }
 
 /* ---------- AI ---------- */
@@ -1594,9 +1338,7 @@ function buildGenPrompt(p,topic,points,len,extra){
    约束：不许增删事实、不许改结构、标记位置不变、字数不能暴跌——任一不满足就退回原稿。 */
 function buildDeAiPrompt(md){
   return '下面是 AI 写的一篇公众号文章初稿。请做一次「去 AI 味」改写，让它读起来像真人写的。\n\n'+
-  /* 先给定向清单：告诉模型初稿里到底命中了哪几类，而不是让它凭感觉找 */
-  aiFlavorDirective(md)+
-  '【通用规则（定向清单之外一并遵守）】\n'+
+  '【只做这些】\n'+
   '1. 删掉所有机械过渡词：值得注意的是、总而言之、综上所述、首先/其次/最后、此外、然而、因此、总之、由此可见\n'+
   '2. 拆掉「不是…而是…」这类对仗句式、工整排比、以及每句都差不多长的均匀节奏\n'+
   '3. 把空泛的评价词换成具体细节；实在没细节可换，就把那句评价删掉\n'+
@@ -1615,8 +1357,7 @@ function deAiPolish(md){
   var before=countCnWords(md);
   var marks=(md.match(/\[(图|表情)[：:]/g)||[]).length;
   var hasTitle=/^\s*#\s+/.test(md);
-  var d0=detectAiFlavor(md);   /* 改写前的 AI 味基线，用于改写后复检 */
-  $('genHint').textContent='正在去 AI 味润色（第 2 次调用，当前残留 '+d0.score+' 处）…';
+  $('genHint').textContent='正在去 AI 味润色（第 2 次调用）…';
   return aiChat([{role:'user',content:buildDeAiPrompt(md)}],
     {temperature:Math.min(0.9,(getSettings().temperature||0.7)+0.1)})
   .then(function(out){
@@ -1637,16 +1378,7 @@ function deAiPolish(md){
     var okMark=(t.match(/\[(图|表情)[：:]/g)||[]).length===marks;
     var okLen=after>=before*0.9;
     var okTitle=!hasTitle||/^\s*#\s+/.test(t);
-    /* 第四重校验：改写的目的就是降 AI 味，降不下来等于白改一次调用，退回原稿。
-       注意用绝对值比较而不是每千字密度——改写会小幅改字数，密度会被字数变化掩盖。 */
-    var dAfter=detectAiFlavor(t);
-    var okFlavor=dAfter.score<=d0.score;
-    if(okMark&&okLen&&okTitle&&okFlavor){return t}
-    if(okMark&&okLen&&okTitle){
-      /* 结构性指标都过，只有 AI 味没降下来——单独给提示，别和"改坏了"混为一谈 */
-      toast('去 AI 味润色没起作用（残留 '+d0.score+' → '+dAfter.score+'，未下降），已保留原稿');
-      return md;
-    }
+    if(okMark&&okLen&&okTitle){return t}
     /* 校验不过 → 保守回退原稿，绝不让润色把稿子改坏 */
     toast('去 AI 味润色结果不合格（标记/字数/标题有出入），已保留原稿');
     return md;
@@ -1680,7 +1412,6 @@ $('btnGen').onclick=function(){
     genState.len=lenSel;
     localStorage.setItem('wxw_lastgen',JSON.stringify(genState));
     pushGenHistory(md,genProfile().name,genState.topic,lenSel);
-    pushGeneration(md,genProfile().name,genState.topic,lenSel,genMetrics(md,p));
     renderGenHistory();
     renderGenResult();
     var n=countCnWords(md);
@@ -1817,9 +1548,6 @@ function renderGenResult(){
   $('genResultCard').style.display='';
   updateWordCount();
   $('mdEditor').value=genState.md;
-  /* 正文变了，上一次的体检结论就过期了，收起避免照着旧结论改 */
-  var cp=$('checkPanel');
-  if(cp)cp.style.display='none';
 }
 /* 生成结果工具栏右侧的实时字数（真实口径：汉字+全角标点，不含槽位标记和标题）。
    附预计阅读时间——公众号官方口径约 300 字/分钟（读起来略快的速读口径），
@@ -1855,7 +1583,7 @@ function applyPreviewCss(p){
   b.style.lineHeight=String(c.lineHeight);
   b.style.textAlign=c.textAlign;
   b.style.padding='0 8px';
-  applyDarkPreview(); /* 深色预览要压掉这里的背景与字色，必须放在最后 */
+  b.style.background='#fff';
 }
 /* 槽位点击（事件委托） */
 $('previewBody').addEventListener('click',function(e){
@@ -2106,475 +1834,6 @@ $('btnRefill').onclick=function(){
 };
 
 /* ---------- 复制到微信 ---------- */
-/* ==========================================================================
-   第三轮新增功能（2026-09-16）
-   来源：doocs/md、md-wechat、WeMD、xiaohu-wechat-format、壹伴助手的能力对标。
-   四项：排版规范化 / 深色模式预览 / 发布前体检 / Word·PDF 导出 / 标题摘要工坊。
-   ========================================================================== */
-
-/* ---------- 1. 排版规范化 ----------
-   借鉴 xiaohu-wechat-format 的「中英文间距修复 + 中文标点修复」，做成一键修 + 导出自动修。
-   只做确定性替换，不动语义，改完人眼可复核。 */
-var TYPO_KEY='wxw_typoAuto';
-var CJK_PUNC='，。、；：？！“”‘’（）《》【】…—·';
-function typoAutoOn(){try{return localStorage.getItem(TYPO_KEY)!=='0'}catch(e){return true}}
-function typoSetAuto(on){try{localStorage.setItem(TYPO_KEY,on?'1':'0')}catch(e){}}
-function typoText(s){
-  if(!s)return s;
-  var out=String(s);
-  out=out.replace(/\.{3,}|。{2,}|…{1,}/g,'……');              /* 省略号统一为「……」 */
-  out=out.replace(/([！!]){2,}/g,'！').replace(/([？?]){2,}/g,'？'); /* ！！！→！ */
-  out=out.replace(/([\u4e00-\u9fa5])\s*,\s*/g,'$1，');        /* 中文语境里的半角标点 */
-  out=out.replace(/([\u4e00-\u9fa5])\s*;\s*/g,'$1；');
-  out=out.replace(/([\u4e00-\u9fa5])\s*!\s*/g,'$1！');
-  out=out.replace(/([\u4e00-\u9fa5])\s*\?\s*/g,'$1？');
-  out=out.replace(/([\u4e00-\u9fa5])\s*:\s*/g,'$1：');
-  /* 中英文之间补空格。
-     只管拉丁字母、不管数字：数字挨着中文多是「9月16日」「第3章」「1500元」这类写法，
-     插空格会把日期和序号拆散——这是 pangu 一类自动加空格工具最常被吐槽的地方。 */
-  out=out.replace(new RegExp('([\\u4e00-\\u9fa5'+CJK_PUNC+'])([A-Za-z])','g'),'$1 $2');
-  out=out.replace(new RegExp('([A-Za-z])([\\u4e00-\\u9fa5'+CJK_PUNC+'])','g'),'$1 $2');
-  out=out.replace(/[ \t]+$/gm,'').replace(/^[ \t]+/gm,'');
-  out=out.replace(/ {2,}/g,' ');
-  return out;
-}
-/* 导出前对 DOM 子树做规范化：槽位标记、图片、代码块原样保留 */
-function typoNode(root){
-  if(!root||typeof document.createTreeWalker!=='function')return;
-  var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null,false),list=[],n;
-  while((n=w.nextNode()))list.push(n);
-  list.forEach(function(t){
-    var p=t.parentNode;
-    if(!p||p.tagName==='IMG'||p.tagName==='SCRIPT'||p.tagName==='STYLE')return;
-    if(p.classList&&(p.classList.contains('slot')||p.classList.contains('pv-code')))return;
-    if(!t.nodeValue||!/\S/.test(t.nodeValue))return;
-    var v=typoText(t.nodeValue);
-    if(v!==t.nodeValue)t.nodeValue=v;
-  });
-}
-/* 对 Markdown 源稿做规范化：代码块与槽位标记行跳过 */
-function typoMarkdown(md){
-  var inCode=false,changed=0;
-  var out=String(md||'').split('\n').map(function(l){
-    if(/^\s*```/.test(l)){inCode=!inCode;return l}
-    if(inCode)return l;
-    if(/^\s*\[(图|表情)[：:]/.test(l))return l; /* 动槽位描述会破坏配图匹配 */
-    var v=typoText(l);
-    if(v!==l)changed++;
-    return v;
-  });
-  return {md:out.join('\n'),changed:changed};
-}
-
-/* ---------- 2. 深色模式预览 ----------
-   微信深色模式不是简单反色：正文背景压到近黑、字色转浅灰、图片基本保留（仅略降亮）。
-   这里按同一思路渲染，用来检查配色在夜间会不会糊。 */
-var darkPreview=false;
-function applyDarkPreview(){
-  var ph=$('phoneFrame'),b=$('previewBody');
-  if(!ph||!b)return;
-  ph.classList.toggle('dark',darkPreview);
-  b.style.background=darkPreview?'#111111':'#fff';
-  if(!darkPreview){
-    var p=findProfile(genState.profileId)||DEFAULT_PROFILE;
-    b.style.color=p.css.color;
-  }else{
-    b.style.color='#b9b9b9';
-  }
-}
-
-/* ---------- 3. 发布前体检 ----------
-   对标壹伴「AI 图文诊断 / 内容违规检测」，做成纯本地规则版：不上传正文、不额外花钱。
-   三级：block 会被平台处罚或明显违规；warn 影响效果或踩线；info 优化建议。 */
-var RISK_GROUPS=[
-  {key:'ad',name:'广告法绝对化用语',level:'warn',
-   tip:'《广告法》第九条禁用的绝对化用语，公众号同样适用。改成可验证的说法（如「销量前三」→「近三个月卖出 2.1 万台」）。',
-   words:['国家级','世界级','最高级','最高端','第一品牌','全网第一','销量第一','排名第一','中国第一','行业第一','独一无二','绝无仅有','史无前例','前无古人','万能','永久','100%','百分百','百分之百','顶级','极品','极致','最先进','最低价','全网最低','史上最低','销量冠军','领导者','缔造者','王牌','首创','首选','唯一','最佳','最好','最优','最强','最便宜','彻底解决','完全解决','绝对安全','零失误']},
-  {key:'induce',name:'诱导分享 / 诱导关注',level:'block',
-   tip:'微信明令禁止的诱导行为，轻则删文、重则封功能，发布前务必删掉。',
-   words:['转发到朋友圈','转发至朋友圈','分享到朋友圈','转发到群','转发3个群','集赞','集赞领','不转不是','转发并截图','分享后领取','砍价','助力','拉票','关注后回复','关注领取','关注领奖','扫码送','免费领','进群领','邀请好友得']},
-  {key:'finance',name:'金融收益承诺',level:'block',
-   tip:'承诺收益、荐股类表述属于违规金融营销，个人号尤其容易中招。',
-   words:['稳赚','保本','保收益','保底收益','无风险','零风险','包赚','翻倍收益','一夜暴富','暴富','内幕消息','荐股','必涨','带单','稳赚不赔','躺着赚钱']},
-  {key:'medical',name:'医疗效果夸大',level:'block',
-   tip:'《医疗广告管理办法》禁止表示功效与安全性的断言，涉及健康内容请改用客观描述。',
-   words:['根治','包治','药到病除','无副作用','彻底治愈','治愈率','抗癌','祖传秘方','立马见效','一次见效','特效药','百分百治愈','永不复发']},
-   /* AI 味残留不再放在这里：它已经升级成 detectAiFlavor() 的十类模式族检查
-      （含双向判据、命中分级与句长节奏），由 scanAiFlavor() 接入体检。
-      留在这里会和新的检查项重复出现在面板上。 */
-];
-/* 站外导流：正则匹配，纯文本里藏联系方式也算。
-   手机号用手写扫描而不是 lookbehind——Safari 16 以下不支持后行断言，会直接抛语法错。 */
-var RISK_PATTERNS=[
-  {re:/(微信|weixin|wechat|wx|微信号|v信|V信|薇信)\s*[:：]?\s*[A-Za-z0-9_-]{5,20}/g,name:'疑似微信号',level:'warn',tip:'正文留个人微信号可能被判导流（微信 / WeChat 这类词本身会误报，核对后忽略即可）。联系方式建议放「自动回复」或菜单栏。'},
-  {name:'疑似手机号',level:'warn',tip:'正文中出现手机号，容易被判营销导流，同时也有隐私风险。',
-   pick:function(t){var out=[],re=/1[3-9]\d{9}/g,m;
-     while((m=re.exec(t))){
-       var b=t.charAt(m.index-1),a=t.charAt(m.index+m[0].length);
-       if(!/\d/.test(b)&&!/\d/.test(a))out.push(m[0]); /* 排除长数字串被截断的误报 */
-     }
-     return out;}},
-  {re:/(QQ|qq|扣扣)\s*[:：]?\s*[1-9]\d{5,11}/g,name:'疑似 QQ 号',level:'warn',tip:'疑似站外导流，确认是否必要。'},
-  {re:/(加群|进群|扫码进群|私聊我|私信我领取|加我微信)/g,name:'导流话术',level:'warn',tip:'引导用户离开公众号的话术，视情况可能被判诱导。'}
-];
-/* 常见错别字 / 易混词（高置信才收，避免误报刷屏） */
-var TYPO_PAIRS=[['做为','作为'],['帐号','账号'],['登陆','登录'],['粘帖','粘贴'],['按装','安装'],['部份','部分'],['机率','几率'],['其它','其他'],['惟一','唯一'],['身份证号吗','身份证号码']];
-/* 标题/摘要/结构类阈值——按公众号后台与手机端的实际显示口径定 */
-var TITLE_SOFT=20,TITLE_HARD=30,DIGEST_MAX=54,PARA_HARD=200,SENT_HARD=70;
-
-function firstTitle(md){
-  var m=String(md||'').match(/^#\s+(.+)$/m);
-  return m?m[1].trim():'';
-}
-function mdBodyText(md){
-  return String(md||'')
-    .replace(/^#\s+.*$/gm,'')                 /* 标题单独检查，不混进正文统计 */
-    .replace(/```[\s\S]*?```/g,'')            /* 代码块不计入检查 */
-    .replace(/\[(图|表情)[：:][^\]]*\]/g,'')   /* 槽位标记不计入 */
-    .replace(/\[([^\]]{1,80})\]\((https?:\/\/[^\s)]+)\)/g,'$1'); /* 链接只留文字 */
-}
-function scanRisk(md){
-  var body=mdBodyText(md),issues=[],hits={};
-  function countIn(text,word){
-    var n=0,i=0;
-    while((i=text.indexOf(word,i))>=0){n++;i+=word.length}
-    return n;
-  }
-  RISK_GROUPS.forEach(function(g){
-    var found=[];
-    g.words.forEach(function(w){
-      var n=countIn(body,w);
-      if(n>0)found.push(w+(n>1?'×'+n:''));
-    });
-    if(found.length){
-      hits[g.key]=found;
-      issues.push({level:g.level,title:g.name+'：命中 '+found.length+' 处',detail:g.tip,hits:found.slice(0,12)});
-    }
-  });
-  RISK_PATTERNS.forEach(function(p){
-    var m=p.pick?p.pick(body):(body.match(p.re)||[]),uniq=[];
-    m.forEach(function(x){var v=String(x).trim();if(uniq.indexOf(v)<0)uniq.push(v)});
-    if(uniq.length)issues.push({level:p.level,title:p.name+'：命中 '+uniq.length+' 处',detail:p.tip,hits:uniq.slice(0,6)});
-  });
-  /* 错别字 */
-  var typoHits=[];
-  TYPO_PAIRS.forEach(function(pair){
-    if(body.indexOf(pair[0])>=0)typoHits.push(pair[0]+'→'+pair[1]);
-  });
-  if(typoHits.length)issues.push({level:'info',title:'疑似错别字 '+typoHits.length+' 处',detail:'按常见易混词表匹配，仅供参考（如「登陆」在军事语境下正确）。',hits:typoHits});
-  return {issues:issues,body:body,hits:hits};
-}
-function scanStructure(md){
-  var issues=[],title=firstTitle(md),body=mdBodyText(md);
-  var words=countCnWords(md);
-  if(!title)issues.push({level:'warn',title:'没有标题',detail:'公众号必须填标题，用「标题 / 摘要」生成几个候选再挑。',fix:{kind:'titles'}});
-  else if(title.length>TITLE_HARD)issues.push({level:'warn',title:'标题 '+title.length+' 字，过长',detail:'订阅号消息列表大约 '+TITLE_SOFT+' 字后开始折行截断，超过 '+TITLE_HARD+' 字基本看不到后半截，建议压到 '+TITLE_SOFT+' 字以内。',hits:[title]});
-  else if(title.length>TITLE_SOFT)issues.push({level:'info',title:'标题 '+title.length+' 字，略长',detail:'手机端列表约 '+TITLE_SOFT+' 字折行，关键卖点尽量放在前 '+TITLE_SOFT+' 字。',hits:[title]});
-  if(words<300)issues.push({level:'warn',title:'正文仅 '+words+' 字',detail:'公众号图文低于 300 字会被判「内容过短」，推荐与信息流分发都会吃亏。'});
-  else if(words<800)issues.push({level:'info',title:'正文 '+words+' 字，偏短',detail:'资讯类图文 1200 字以上更容易获得完读率与推荐。'});
-  /* 段落与句子 */
-  var paras=body.split(/\n+/).filter(function(x){return x.trim()&&!/^[#>\-*\d]/.test(x.trim())});
-  var longParas=paras.filter(function(x){return x.replace(/\s/g,'').length>PARA_HARD});
-  if(longParas.length)issues.push({level:'warn',title:'超长段落 '+longParas.length+' 处',detail:'手机屏一屏能装约 '+PARA_HARD+' 字，再长就是一堵墙，读者会直接划走。建议拆段。',hits:longParas.map(function(x){return x.slice(0,18)+'…'})});
-  var longSent=[];
-  paras.forEach(function(p){
-    p.split(/[。！？!?]/).forEach(function(s){
-      var t=s.replace(/\s/g,'');
-      if(t.length>SENT_HARD&&longSent.indexOf(t.slice(0,24))<0)longSent.push(t.slice(0,24));
-    });
-  });
-  if(longSent.length)issues.push({level:'info',title:'长句 '+longSent.length+' 处',detail:'超过 '+SENT_HARD+' 字没有句号，读起来容易憋气，拆成两句更顺。',hits:longSent});
-  /* 配图与槽位 */
-  var pb=$('previewBody');
-  if(pb){
-    var unfilled=pb.querySelectorAll('.slot-img,.slot-emoji').length;
-    var imgs=pb.querySelectorAll('img:not(.inline-emoji)').length;
-    if(unfilled)issues.push({level:'warn',title:'还有 '+unfilled+' 个配图槽位未填充',detail:'未填充的槽位复制时会被跳过，成文会缺图。点「自动配图」补上。',fix:{kind:'autofill'}});
-    if(imgs===0&&words>=800)issues.push({level:'warn',title:'全文没有配图',detail:'纯文字长文在手机端阅读负担重，且首图缺失会影响卡片样式。'});
-    else if(imgs>0&&words/imgs>900)issues.push({level:'info',title:'配图偏少（'+imgs+' 张 / '+words+' 字）',detail:'平均每 '+Math.round(words/imgs)+' 字一张图，公众号常见节奏是 300~500 字一图。'});
-    var firstBlock=pb.querySelector('.imgblock img');
-    if(!firstBlock&&words>=800)issues.push({level:'info',title:'开头没有图',detail:'封面图之外的首图决定读者是否往下划，建议开篇就放一张。'});
-  }
-  /* 外链 */
-  var links=(String(md).match(/\[([^\]]{1,80})\]\((https?:\/\/[^\s)]+)\)/g)||[]);
-  var outer=links.filter(function(l){return !isWeixinLink((l.match(/\((https?:[^)]+)\)/)||[])[1]||'')});
-  if(outer.length)issues.push({level:'info',title:'外链 '+outer.length+' 条，已自动转脚注',detail:'公众号正文放不住外链，导出时会变成 [n] 角标，网址收进文末【参考资料】。确认参考资料区即可。',hits:outer.slice(0,6).map(function(x){return x.replace(/^\[/,'').slice(0,28)})});
-  /* 排版规范 */
-  var typo=typoMarkdown(md);
-  if(typo.changed>0)issues.push({level:'info',title:'排版可规范化 '+typo.changed+' 处',detail:'中英文/中文与英文之间缺空格、半角标点、省略号写法不统一等，一键修完更整齐。',fix:{kind:'typo'},hits:['一键规范化']});
-  /* 摘要 */
-  issues.push({level:'info',title:'摘要别忘填（≤'+DIGEST_MAX+' 字）',detail:'公众号后台的摘要会显示在分享卡片上，空着系统会自动截取正文开头。用「标题 / 摘要」生成。',fix:{kind:'titles'}});
-  return issues;
-}
-/* AI 味残留检查。体检按钮的说明里一直写着这一项，但之前只查违规词和结构，没真的查 AI 味。
-   命中 >=3 处算提醒（这个密度读者能明显感觉到），1-2 处只作优化建议。
-   未命中时返回空数组——不加"通过"条目，是为了让 issues 为空时能显示「全部通过」。 */
-function scanAiFlavor(md){
-  var d=detectAiFlavor(md);
-  return d.items.map(function(x){
-    return {level:x.hits>=3?'warn':'info',
-      title:'AI 味残留 · '+x.name+' ×'+x.hits,
-      detail:'怎么改：'+x.fix+'　|　什么时候别改：'+x.keep,
-      hits:x.samples||[]};
-  });
-}
-function runPublishCheck(){
-  if(!genState.md){toast('还没有生成文章');return}
-  var r=scanRisk(genState.md);
-  var issues=r.issues.concat(scanStructure(genState.md)).concat(scanAiFlavor(genState.md));
-  renderCheckPanel(issues);
-}
-function scoreOf(issues){
-  var b=0,w=0,i=0;
-  issues.forEach(function(x){if(x.level==='block')b++;else if(x.level==='warn')w++;else i++});
-  var score=Math.max(0,100-b*12-w*5-i*2);
-  var grade=score>=90?'可以发':score>=75?'小改即可':score>=60?'建议修改':'风险较高';
-  return {score:score,grade:grade,block:b,warn:w,info:i};
-}
-function renderCheckPanel(issues){
-  var box=$('checkPanel');
-  if(!box)return;
-  box.style.display='';
-  var s=scoreOf(issues);
-  var cls=s.score>=90?'chk-good':(s.score>=60?'chk-mid':'chk-bad');
-  var order={block:0,warn:1,info:2};
-  issues=issues.slice().sort(function(a,b){return order[a.level]-order[b.level]});
-  var h='<div class="chk-head '+cls+'">'+
-    '<div><div class="chk-num">'+s.score+'</div></div>'+
-    '<div style="flex:1;min-width:180px"><div class="chk-grade">'+esc(s.grade)+'</div>'+
-    '<div class="chk-sum">阻断 '+s.block+' · 提醒 '+s.warn+' · 建议 '+s.info+'　（阻断 -12 / 提醒 -5 / 建议 -2，满分 100）</div></div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" id="chkRerun" type="button">重新体检</button>'+
-    '<button class="btn sm" id="chkClose" type="button">收起</button></div></div>';
-  if(!issues.length){
-    h+='<div class="chk-item pass"><div class="chk-t">全部通过</div><div class="chk-d">没发现违规词、结构与配图问题。</div></div>';
-  }
-  var lastLevel='';
-  issues.forEach(function(x,i){
-    if(x.level!==lastLevel){
-      lastLevel=x.level;
-      h+='<div class="chk-sec">'+(x.level==='block'?'阻断项（发布前必须处理）':x.level==='warn'?'提醒项（影响效果或踩线）':'优化建议')+'</div>';
-    }
-    h+='<div class="chk-item '+x.level+'">'+
-      '<div class="chk-t">'+esc(x.title)+'<span class="chk-lv">'+(x.level==='block'?'阻断':x.level==='warn'?'提醒':'建议')+'</span></div>'+
-      '<div class="chk-d">'+esc(x.detail)+'</div>'+
-      (x.hits&&x.hits.length?('<div class="chk-hits">'+x.hits.map(function(t){return '<span class="chk-hit" data-hit="'+esc(t)+'" title="点击在编辑器里定位">'+esc(t)+'</span>'}).join('')+'</div>'):'')+
-      (x.fix?('<div class="chk-act"><button class="btn sm" data-fix="'+x.fix.kind+'" type="button">'+(x.fix.kind==='typo'?'一键规范化':x.fix.kind==='autofill'?'自动配图':'去生成标题 / 摘要')+'</button></div>'):'')+
-      '</div>';
-  });
-  h+='<div class="chk-d" style="margin-top:12px">词表为本地内置规则，覆盖广告法绝对化用语、诱导分享、金融与医疗违规、站外导流与常见错别字；不能替代人工审核，涉及价格、参数、引用的内容仍请自行核对。</div>';
-  box.innerHTML=h;
-  $('chkRerun').onclick=runPublishCheck;
-  $('chkClose').onclick=function(){box.style.display='none'};
-  box.querySelectorAll('.chk-hit').forEach(function(el){
-    el.onclick=function(){locateInEditor(el.getAttribute('data-hit'))};
-  });
-  box.querySelectorAll('[data-fix]').forEach(function(el){
-    el.onclick=function(){
-      var k=el.getAttribute('data-fix');
-      if(k==='typo')applyTypoToMd();
-      else if(k==='autofill')autoFillSlots();
-      else openTitleWorkshop();
-    };
-  });
-  if(typeof box.scrollIntoView==='function')box.scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-/* 在 Markdown 编辑器里定位到某个片段 */
-function locateInEditor(word){
-  var w=$('mdEditorWrap');
-  if(w)w.style.display='';
-  var ta=$('mdEditor');
-  if(!ta)return;
-  var key=String(word||'').split('→')[0].replace(/[…×]\d*$/,'');
-  var idx=ta.value.indexOf(key);
-  ta.focus();
-  if(idx<0){toast('编辑器里没找到「'+key+'」，可能已被改写');return}
-  ta.setSelectionRange(idx,idx+key.length);
-  var line=ta.value.slice(0,idx).split('\n').length;
-  ta.scrollTop=Math.max(0,(line-6)*20);
-}
-/* 一键把规范化结果写回正文 */
-function applyTypoToMd(){
-  if(!genState.md){toast('还没有生成文章');return}
-  var r=typoMarkdown(genState.md);
-  if(!r.changed){toast('没有需要规范化的地方');return}
-  genState.md=r.md;
-  localStorage.setItem('wxw_lastgen',JSON.stringify(genState));
-  renderGenResult();
-  toast('已规范化 '+r.changed+' 处（中英文间距 / 标点 / 省略号）','ok');
-  if($('checkPanel').style.display!=='none')runPublishCheck();
-}
-
-/* ---------- 4. Word / PDF 导出 ---------- */
-function safeFileName(t){
-  return (String(t||'').replace(/[\\/:*?"<>|\s]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40))||('article_'+Date.now());
-}
-/* Word：导出带 Office 命名空间的 HTML，扩展名 .doc，Word / WPS 能直接打开并保留排版 */
-function exportWordDoc(title,html){
-  var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'+
-    '<head><meta charset="UTF-8"><title>'+esc(title)+'</title>'+
-    '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->'+
-    '<style>@page{size:A4;margin:2.54cm 3.17cm}body{font-family:"Microsoft YaHei","微软雅黑",sans-serif;font-size:15px;line-height:1.75}</style>'+
-    '</head><body>'+html+'</body></html>';
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([doc],{type:'application/msword;charset=utf-8'}));
-  a.download=safeFileName(title)+'.doc';
-  a.click();
-  setTimeout(function(){URL.revokeObjectURL(a.href)},4000);
-  toast('已导出 Word（.doc 格式，Word / WPS 可直接打开）','ok');
-}
-/* PDF：用隐藏 iframe 调浏览器打印，选「另存为 PDF」。不依赖任何第三方库 */
-function exportPdfByPrint(title,html){
-  var old=document.getElementById('__printFrame'); /* 动态创建，不走 $() 以免静态检查报缺 ID */
-  if(old&&old.parentNode)old.parentNode.removeChild(old);
-  var f=document.createElement('iframe');
-  f.id='__printFrame';
-  f.style.cssText='position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:0;';
-  document.body.appendChild(f);
-  var d=f.contentWindow.document;
-  d.open();
-  d.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(title)+'</title>'+
-    '<style>@page{size:A4;margin:18mm 16mm}body{font-family:"Microsoft YaHei",sans-serif;margin:0;font-size:15px;line-height:1.75}p{margin:0}img{max-width:100%;height:auto}</style>'+
-    '</head><body>'+html+'</body></html>');
-  d.close();
-  var fire=function(){
-    try{f.contentWindow.focus();f.contentWindow.print()}
-    catch(e){toast('调用打印失败：'+e.message)}
-  };
-  setTimeout(fire,1200); /* 留时间给外链图片加载，否则 PDF 里图是空的 */
-  toast('已打开打印窗口，目标选「另存为 PDF」。图片是外链，若空白请等图加载完再打印');
-}
-
-/* ---------- 5. 标题 / 摘要工坊 ----------
-   对标壹伴「AI 标题评分」：一次给多个候选并打分，顺带出 54 字内摘要。 */
-function openTitleWorkshop(){
-  if(!genState.md){toast('还没有生成文章');return}
-  var p=findProfile(genState.profileId)||DEFAULT_PROFILE;
-  var curTitle=firstTitle(genState.md)||$('genTopic').value||'';
-  var box=document.createElement('div');
-  box.innerHTML=
-    '<p class="muted">按「'+esc(p.name)+'」的文风生成候选标题并打分，同时给出 '+DIGEST_MAX+' 字内的摘要。点标题直接替换正文标题，点摘要复制。</p>'+
-    '<div class="row"><div><label>文章主题（默认取当前标题）</label><input type="text" id="twTopic" value="'+esc(curTitle)+'"></div>'+
-    '<div><label>条数</label><select id="twCount"><option>4</option><option selected>6</option><option>8</option></select></div></div>'+
-    '<label>想要的味道（可留空）</label><input type="text" id="twFlavor" placeholder="例：带点吐槽，别太标题党">'+
-    '<div class="toolbar" style="margin-top:10px"><button class="btn primary" id="twGo" type="button">生成标题</button>'+
-    '<button class="btn" id="twCopyPrompt" type="button">复制提示词（给其他模型）</button></div>'+
-    '<div id="twOut"></div>';
-  openModal('标题 / 摘要工坊',box);
-  var buildMsgs=function(){
-    var n=box.querySelector('#twCount').value;
-    var topic=box.querySelector('#twTopic').value.trim()||curTitle;
-    var flavor=box.querySelector('#twFlavor').value.trim();
-    return buildTitlePrompt(topic,flavor,n,p);
-  };
-  box.querySelector('#twCopyPrompt').onclick=function(){
-    var txt=buildMsgs().map(function(m){return m.content}).join('\n\n');
-    if(navigator.clipboard)navigator.clipboard.writeText(txt).then(function(){toast('提示词已复制')}).catch(function(){toast('复制失败')});
-    else toast('浏览器不支持剪贴板');
-  };
-  box.querySelector('#twGo').onclick=function(){
-    var btn=this,out=box.querySelector('#twOut');
-    btn.disabled=true;btn.textContent='生成中…';
-    out.innerHTML='<div class="empty">模型思考中，通常十几秒…</div>';
-    aiChat(buildMsgs()).then(function(txt){
-      out.innerHTML='';
-      var d=parseTitleResult(txt);
-      if(!d.titles.length){out.innerHTML='<div class="empty">没能解析出结果，下面是原文，可手动挑：<pre style="white-space:pre-wrap;font-size:12px">'+esc(txt)+'</pre></div>';return}
-      renderTitleResult(out,d);
-    }).catch(function(e){
-      out.innerHTML='';
-      toast('生成失败：'+e.message,'err');
-    }).finally(function(){btn.disabled=false;btn.textContent='生成标题'});
-  };
-}
-function buildTitlePrompt(topic,flavor,n,p){
-  var t=p.tone||'';
-  var anchors=p.anchors||{};
-  var styleLine=[t,anchors.open?'该号常见的开篇口吻：'+String(anchors.open).slice(0,40):''].filter(Boolean).join('；');
-  var sys='你是公众号标题老手。只输出 JSON，不要解释、不要代码块围栏。';
-  var usr='为一篇公众号文章起 '+n+' 个标题，并写 3 条摘要。\n\n'+
-    '文章主题：'+topic+'\n'+
-    '账号文风：'+styleLine+'\n'+
-    (flavor?('额外要求：'+flavor+'\n'):'')+
-    '\n要求：\n'+
-    '1. 标题贴合上面的文风，不要标题党、不要夸张承诺、不要用感叹号堆砌；\n'+
-    '2. 每个标题控制在 '+TITLE_SOFT+' 字以内，手机端列表不折行；\n'+
-    '3. 给每个标题打分（0-100，按「打开欲望 + 与文风贴合度」评），并写一句不超过 20 字的打分理由；\n'+
-    '4. 摘要每条不超过 '+DIGEST_MAX+' 个汉字，是文章内容的浓缩，不是标题的复述；\n'+
-    '5. 输出格式：\n'+
-    '{"titles":[{"title":"...","score":92,"why":"..."}],"digests":["...","...","..."]}';
-  return [{role:'system',content:sys},{role:'user',content:usr}];
-}
-function parseTitleResult(txt){
-  var s=String(txt||'').trim();
-  s=s.replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
-  var d={titles:[],digests:[]};
-  try{
-    var j=JSON.parse(s);
-    (j.titles||[]).forEach(function(x){
-      if(!x)return;
-      var t=typeof x==='string'?x:(x.title||'');
-      if(!t)return;
-      d.titles.push({title:String(t).replace(/^#+\s*/,''),score:Number(x.score)||0,why:String(x.why||'')});
-    });
-    (j.digests||[]).forEach(function(x){if(x)d.digests.push(String(x).replace(/^#+\s*/,''))});
-    if(d.titles.length)return d;
-  }catch(e){}
-  /* JSON 解析失败时的兜底：逐行读编号列表 */
-  s.split('\n').forEach(function(line){
-    var m=line.match(/^\s*(?:\d+[.、)]|[-*])\s*(.+)$/);
-    if(!m)return;
-    var t=m[1].replace(/[【\[（(]\s*\d+\s*分\s*[】\]）)]/g,'').replace(/^标题[:：]/,'').trim();
-    var sm=t.match(/(\d{2,3})\s*分/);
-    if(sm)t=t.replace(sm[0],'').trim(); /* 分数是评分用的，不属于标题本身 */
-    if(t&&t.length<=60)d.titles.push({title:t,score:sm?Number(sm[1]):0,why:''});
-  });
-  return d;
-}
-function renderTitleResult(box,d){
-  var h='<div class="chk-sec">候选标题（点「用这个」替换正文标题，'+TITLE_SOFT+' 字以内最佳）</div>';
-  d.titles.slice().sort(function(a,b){return (b.score||0)-(a.score||0)}).forEach(function(x,i){
-    var len=x.title.length;
-    h+='<div class="chk-item '+(len>TITLE_HARD?'warn':(len>TITLE_SOFT?'info':'pass'))+'">'+
-      '<div class="chk-t">'+esc(x.title)+
-      (x.score?('<span class="chk-lv">'+x.score+' 分</span>'):'')+
-      '<span class="chk-lv">'+len+' 字'+(len>TITLE_SOFT?'（偏长）':'')+'</span></div>'+
-      (x.why?('<div class="chk-d">'+esc(x.why)+'</div>'):'')+
-      '<div class="chk-act"><button class="btn sm" data-title="'+esc(x.title)+'" type="button">用这个</button></div></div>';
-  });
-  if(d.digests.length){
-    h+='<div class="chk-sec">摘要（≤'+DIGEST_MAX+' 字，点卡片复制）</div>';
-    d.digests.forEach(function(t){
-      h+='<div class="chk-item '+(t.length>DIGEST_MAX?'warn':'pass')+'" style="cursor:pointer" data-digest="'+esc(t)+'">'+
-        '<div class="chk-t">'+esc(t)+'<span class="chk-lv">'+t.length+' 字</span></div>'+
-        '<div class="chk-d">点击复制，粘到公众号后台的「摘要」框</div></div>';
-    });
-  }
-  box.innerHTML=h;
-  box.querySelectorAll('[data-title]').forEach(function(el){
-    el.onclick=function(){
-      applyTitle(el.getAttribute('data-title'));
-      closeModal();
-    };
-  });
-  box.querySelectorAll('[data-digest]').forEach(function(el){
-    el.onclick=function(){
-      var t=el.getAttribute('data-digest');
-      if(navigator.clipboard)navigator.clipboard.writeText(t).then(function(){toast('摘要已复制','ok')}).catch(function(){toast('复制失败')});
-      else toast('浏览器不支持剪贴板');
-    };
-  });
-}
-function applyTitle(t){
-  if(!t)return;
-  var md=genState.md||'';
-  if(/^#\s+.+$/m.test(md))md=md.replace(/^#\s+.+$/m,'# '+t);
-  else md='# '+t+'\n\n'+md;
-  genState.md=md;
-  localStorage.setItem('wxw_lastgen',JSON.stringify(genState));
-  renderGenResult();
-  toast('标题已替换','ok');
-}
-
 function buildWechatHtml(){
   var p=findProfile(genState.profileId)||DEFAULT_PROFILE;
   var c=applyStyleOverrides(p.css); /* 排版微调对导出同样生效 */
@@ -2673,8 +1932,6 @@ function cleanInline(node){
     frag.appendChild(wrap);frag.appendChild(mark);
     a.parentNode.replaceChild(frag,a);
   });
-  /* 排版规范化：只改复制出去的内容，预览保持作者原稿的样子，方便对照 */
-  if(typoAutoOn())typoNode(c);
   return c.innerHTML;
 }
 function copyRich(html){
@@ -2779,8 +2036,6 @@ $('btnClearResult').onclick=function(){
   genState={profileId:null,md:''};
   localStorage.removeItem('wxw_lastgen');
   renderGenResult();
-  var cp=$('checkPanel');
-  if(cp)cp.style.display='none';
   toast('已清空');
 };
 $('btnEditMd').onclick=function(){
@@ -2793,33 +2048,6 @@ $('btnApplyMd').onclick=function(){
   renderGenResult();
   toast('预览已刷新（正文 '+countCnWords(genState.md)+' 字，已填充的槽位会重置）');
 };
-
-/* ---------- 第三轮新增功能的按钮绑定 ---------- */
-$('btnCheck').onclick=runPublishCheck;
-$('btnTitles').onclick=openTitleWorkshop;
-$('btnTypo').onclick=applyTypoToMd;
-$('btnDarkPreview').onclick=function(){
-  darkPreview=!darkPreview;
-  this.textContent=darkPreview?'退出深色':'深色预览';
-  if(darkPreview)this.classList.add('primary');else this.classList.remove('primary');
-  applyDarkPreview();
-  toast(darkPreview?'已按微信深色模式渲染（只改预览，导出内容不变）':'已回到亮色预览');
-};
-$('btnExportWord').onclick=function(){
-  if(!genState.md){toast('还没有生成文章');return}
-  var r=buildWechatHtml();
-  exportWordDoc(firstTitle(genState.md)||'公众号文章',r.html);
-};
-$('btnExportPdf').onclick=function(){
-  if(!genState.md){toast('还没有生成文章');return}
-  var r=buildWechatHtml();
-  exportPdfByPrint(firstTitle(genState.md)||'公众号文章',r.html);
-};
-$('chkTypoAuto').onchange=function(){
-  typoSetAuto(this.checked);
-  toast(this.checked?'复制 / 导出时会自动做排版规范化':'已关闭自动规范化');
-};
-$('btnDbRefresh').onclick=function(){loadDbStats();toast('已刷新')};
 
 /* ---------- 表情包库（IndexedDB） ---------- */
 var EDB={db:null,
@@ -3644,13 +2872,6 @@ function init(){
     if(ip)$('ideaPos').value=ip;
   }catch(e){}
   EDB.open().then(function(){renderEmojiGrid($('emojiGrid'))}).catch(function(e){toast('表情数据库打开失败：'+e.message)});
-  /* 以库为准同步档案：库里有就覆盖本地缓存，库里空就把本地的推上去 */
-  if(dbEnabled()){
-    pullProfiles().then(function(n){
-      if(n)toast('已从数据库载入 '+n+' 份风格档案');
-    });
-    loadDbStats();
-  }
   if(aiUseProxy()){
     loadAssetList();
     fetch('/api/version').then(function(r){return r.json()})
@@ -3659,10 +2880,6 @@ function init(){
       if(b)b.textContent='v'+v.version; /* 版本=index.html 最后修改时间，用于确认是否最新 */
     }).catch(function(){});
   }
-  try{
-    var ta=$('chkTypoAuto');
-    if(ta)ta.checked=typoAutoOn();
-  }catch(e){}
   switchTab('analyze');
 }
 init();

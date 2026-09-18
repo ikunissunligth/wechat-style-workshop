@@ -65,6 +65,51 @@ async function api(p, opt) {
     ok('图片代理(失效URL应优雅失败)', pr.status === 200 || pr.status === 502, 'status=' + pr.status);
   } catch (e) { ok('图片代理', false, e.message); }
 
+  console.log('\n=== A2. 数据层接口（SQLite）===');
+  const H = { 'Content-Type': 'application/json' };
+  const st = await api('/api/stats');
+  ok('库统计接口', st.status === 200 && st.body && st.body.article > 0,
+     st.body ? ('文章 ' + st.body.article + ' / 图片 ' + st.body.image) : '');
+  ok('11 张表都有计数', st.body && Object.keys(st.body).length === 11,
+     st.body ? Object.keys(st.body).length + ' 张' : '');
+  const accs = await api('/api/accounts');
+  ok('账号列表', accs.status === 200 && Array.isArray(accs.body.items),
+     accs.body && accs.body.items ? accs.body.items.length + ' 个' : '');
+  const profs = await api('/api/profiles');
+  ok('档案列表', profs.status === 200 && Array.isArray(profs.body.items));
+  const gens = await api('/api/generations');
+  ok('生成记录列表', gens.status === 200 && Array.isArray(gens.body.items));
+  const evs = await api('/api/evaluations/summary');
+  ok('盲评汇总', evs.status === 200 && Array.isArray(evs.body.items));
+  const flogs = await api('/api/fetch_logs');
+  ok('抓取日志', flogs.status === 200 && Array.isArray(flogs.body.items));
+  const dbImgs = await api('/api/images');
+  ok('素材索引', dbImgs.status === 200 && Array.isArray(dbImgs.body.items),
+     dbImgs.body && dbImgs.body.items ? dbImgs.body.items.length + ' 张' : '');
+  // 账号建/改/删（用完即删，不留测试数据）
+  const na = await api('/api/accounts', { method: 'POST', headers: H,
+    body: JSON.stringify({ name: '__接口自检__', note: 'test' }) });
+  ok('建账号', na.status === 200 && na.body.id > 0, na.body ? 'id=' + na.body.id : '');
+  if (na.body && na.body.id) {
+    const up = await api('/api/accounts/' + na.body.id, { method: 'PUT', headers: H,
+      body: JSON.stringify({ note: '改过' }) });
+    ok('改账号', up.status === 200 && up.body.ok === true);
+    const del = await api('/api/accounts/' + na.body.id, { method: 'DELETE', headers: H, body: '{}' });
+    ok('删账号', del.status === 200 && del.body.ok === true);
+  }
+  // 档案存 + 六层拆表 + 删
+  const tpid = 'p_selftest_' + Date.now();
+  const sp = await api('/api/profiles', { method: 'POST', headers: H, body: JSON.stringify({
+    profile: { id: tpid, name: '自检档案', tone: '口语', css: { fontSize: 15 },
+      paragraphs: { avgLen: 55 }, rhythm: { avg: 4 }, topic: { total: 3 },
+      argument: { total: 3 }, stance: { judges: ['x'] }, images: { total: 9 } } }) });
+  ok('存档案', sp.status === 200 && sp.body.id === tpid);
+  const lyr = await api('/api/profiles/' + tpid + '/layers');
+  ok('六层拆表', lyr.status === 200 && lyr.body.items.length === 6,
+     lyr.body ? lyr.body.items.map(x => x.layer_name).join('/') : '');
+  const dp = await api('/api/profiles/' + tpid, { method: 'DELETE', headers: H, body: '{}' });
+  ok('删档案', dp.status === 200 && dp.body.ok === true);
+
   console.log('\n=== B. 前端运行时（jsdom，捕获所有错误）===');
   const appHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const errors = [];
