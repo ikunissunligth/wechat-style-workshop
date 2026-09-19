@@ -42,3 +42,6 @@ dist/
 
 # 重写提交历史时的本地安全备份
 .git-backup-*/
+
+# index.html 重构期的本地备份（内容在 git 历史里，不入库）
+index.html.bak-*
